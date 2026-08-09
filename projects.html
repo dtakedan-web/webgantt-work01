@@ -1,0 +1,2342 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <!-- ============================================================
+       [Phase A] アプリ基準パスの外出し
+       - APP_BASE をデプロイ環境ごとに書き換えるだけで、
+         全ページの静的リンク・fetch のベースが切り替わる。
+       - 既存の絶対パス "/WebGantt/..." は影響を受けず、そのまま動く。
+       ============================================================ -->
+  <script>window.__APP_BASE__ = '/WebGantt/';</script>
+  <base href="/WebGantt/">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ガントチャート - プロジェクト管理</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    :root {
+      --bg-app: #f7f8fa;
+      --bg-surface: #ffffff;
+      --bg-subtle: #fafbfc;
+      --bg-hover: #fafcff;
+      --text-main: #2f3441;
+      --text-sub: #5f6775;
+      --text-muted: #8a93a3;
+      --line-strong: #dce2e8;
+      --line-mid: #e7ebf0;
+      --line-weak: #e8edf3;
+      --primary: #3457d5;
+      --primary-hover: #2b61e0;
+      --primary-soft: #eaf2ff;
+      --danger: #dc2626;
+      --danger-hover: #b91c1c;
+      --danger-soft: #fef2f2;
+      --success: #16a34a;
+      --success-soft: #f0fdf4;
+      --warning: #d97706;
+      --warning-soft: #fffbeb;
+      --shadow: 0 10px 30px rgba(31, 41, 55, 0.08);
+      --shadow-sm: 0 2px 8px rgba(31, 41, 55, 0.06);
+      --radius: 8px;
+    }
+    body {
+      font-family: 'Segoe UI', 'Hiragino Sans', sans-serif;
+      background: var(--bg-app);
+      color: var(--text-main);
+      min-height: 100vh;
+      padding: 20px;
+    }
+    .container { max-width: 900px; margin: 0 auto; }
+
+    /* ─── ヘッダー ─────────────────────────────────────── */
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 24px;
+      padding: 16px 24px;
+      background: var(--bg-surface);
+      border: 1px solid var(--line-mid);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow-sm);
+    }
+    .header h1 { font-size: 18px; font-weight: 700; color: var(--text-main); }
+    .header-links { display: flex; align-items: center; gap: 16px; }
+    .header-links a {
+      color: var(--primary);
+      text-decoration: none;
+      font-size: 13px;
+    }
+    .header-links a:hover { text-decoration: underline; }
+    .current-user-info {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      color: var(--text-sub);
+    }
+    .current-user-info .dot {
+      width: 10px; height: 10px;
+      border-radius: 50%;
+      display: inline-block;
+    }
+
+    /* ─── カード ───────────────────────────────────────── */
+    .card {
+      background: var(--bg-surface);
+      border: 1px solid var(--line-mid);
+      border-radius: var(--radius);
+      padding: 24px;
+      margin-bottom: 20px;
+      box-shadow: var(--shadow-sm);
+    }
+    .card h2 {
+      font-size: 16px;
+      color: var(--text-main);
+      margin-bottom: 16px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid var(--line-weak);
+      font-weight: 700;
+    }
+    .card h2 .badge {
+      font-size: 11px;
+      background: var(--primary-soft);
+      color: var(--primary);
+      padding: 2px 8px;
+      border-radius: 4px;
+      margin-left: 8px;
+      vertical-align: middle;
+      font-weight: 600;
+    }
+    .card h2 .badge-danger {
+      background: var(--danger-soft);
+      color: var(--danger);
+    }
+    .card h2 .badge-success {
+      background: var(--success-soft);
+      color: var(--success);
+    }
+
+    /* ─── フォーム ─────────────────────────────────────── */
+    .form-group { margin-bottom: 16px; }
+    .form-group label {
+      display: block;
+      font-size: 13px;
+      color: var(--text-sub);
+      margin-bottom: 6px;
+      font-weight: 600;
+    }
+    .form-group input, .form-group select {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1px solid var(--line-strong);
+      border-radius: 6px;
+      font-size: 14px;
+      color: var(--text-main);
+      background: var(--bg-surface);
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    .form-group input:focus, .form-group select:focus {
+      outline: none;
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px rgba(52, 87, 213, 0.10);
+    }
+    .form-group .hint {
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-top: 4px;
+    }
+
+    /* ─── ボタン ───────────────────────────────────────── */
+    .btn {
+      padding: 10px 24px;
+      border: none;
+      border-radius: 6px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .btn-primary { background: var(--primary); color: #fff; }
+    .btn-primary:hover { background: var(--primary-hover); }
+    .btn-primary:disabled { background: var(--text-muted); cursor: not-allowed; }
+    .btn-danger { background: var(--danger); color: #fff; }
+    .btn-danger:hover { background: var(--danger-hover); }
+    .btn-secondary {
+      background: var(--bg-subtle);
+      color: var(--text-sub);
+      border: 1px solid var(--line-strong);
+    }
+    .btn-secondary:hover { background: var(--line-weak); }
+    .btn-small { padding: 6px 14px; font-size: 12px; }
+    .btn-row { display: flex; gap: 12px; margin-top: 8px; }
+
+    /* ─── メッセージ ───────────────────────────────────── */
+    .message {
+      font-size: 13px;
+      margin-top: 12px;
+      min-height: 18px;
+      padding: 8px 12px;
+      border-radius: 4px;
+      display: none;
+    }
+    .message.success { display: block; background: var(--success-soft); color: var(--success); }
+    .message.error { display: block; background: var(--danger-soft); color: var(--danger); }
+
+    /* ─── プロジェクト一覧テーブル ─────────────────────── */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+    table th, table td {
+      padding: 10px 12px;
+      text-align: left;
+      border-bottom: 1px solid var(--line-weak);
+    }
+    table th {
+      background: var(--bg-subtle);
+      font-weight: 600;
+      color: var(--text-sub);
+      white-space: nowrap;
+    }
+    table tr:hover { background: var(--bg-hover); }
+    table tr.editing { background: var(--primary-soft); }
+    table tr.editing:hover { background: var(--primary-soft); }
+    table td input {
+      padding: 6px 8px;
+      border: 1px solid var(--primary);
+      border-radius: 4px;
+      font-size: 13px;
+      width: 100%;
+      color: var(--text-main);
+    }
+    table td input:focus {
+      outline: none;
+      box-shadow: 0 0 0 2px rgba(52, 87, 213, 0.10);
+    }
+    table td .cell-actions {
+      display: flex;
+      gap: 6px;
+      white-space: nowrap;
+    }
+    .project-name-link {
+      color: var(--primary);
+      text-decoration: none;
+      font-weight: 600;
+    }
+    .project-name-link:hover { text-decoration: underline; }
+    .project-id-text {
+      font-family: monospace;
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+    .empty-state {
+      text-align: center;
+      padding: 40px;
+      color: var(--text-muted);
+      font-size: 14px;
+    }
+
+    /* ─── 権限バッジ ───────────────────────────────────── */
+    .role-badge {
+      font-size: 10px;
+      padding: 2px 6px;
+      border-radius: 3px;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+    .role-badge.manager {
+      background: var(--primary-soft);
+      color: var(--primary);
+    }
+    .role-badge.member {
+      background: var(--bg-subtle);
+      color: var(--text-muted);
+    }
+
+    /* ─── メンバーテーブル ─────────────────────────────── */
+    .member-table th, .member-table td {
+      padding: 8px 12px;
+    }
+    .member-table .role-select {
+      padding: 4px 8px;
+      border: 1px solid var(--line-strong);
+      border-radius: 4px;
+      font-size: 12px;
+      color: var(--text-main);
+      background: var(--bg-surface);
+    }
+
+    /* ─── モーダル ─────────────────────────────────────── */
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0,0,0,0.4);
+      z-index: 10000;
+      align-items: center;
+      justify-content: center;
+    }
+    .modal-overlay.visible { display: flex; }
+    .modal {
+      background: var(--bg-surface);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      max-width: 600px;
+      width: 90%;
+      /* メンバー追加エリア + 6人分テーブル + ページネーションに応じた固定高 */
+      height: 680px;
+      display: flex;
+      flex-direction: column;
+    }
+    .modal-body {
+      flex: 1;
+      overflow-y: auto;
+      padding: 24px;
+    }
+    .modal-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 16px 24px;
+      border-bottom: 1px solid var(--line-weak);
+    }
+    .modal-header h3 { font-size: 16px; font-weight: 700; }
+    .modal-close {
+      background: none;
+      border: none;
+      font-size: 20px;
+      cursor: pointer;
+      color: var(--text-muted);
+      padding: 4px 8px;
+    }
+    .modal-close:hover { color: var(--text-main); }
+    /* .modal-body スタイルは上記の flex ブロック内で定義済み */
+
+    /* ─── ページネーション ───────────────────────────────── */
+    #memberPagination .btn:disabled,
+    #projectPagination .btn:disabled {
+      opacity: 0.35;
+      cursor: default;
+      pointer-events: none;
+    }
+
+    /* ─── 候補ユーザードロップダウン ─────────────────────── */
+    .user-picker { position: relative; }
+    .user-picker-input {
+      width: 100%;
+      padding: 8px 10px;
+      border: 1px solid var(--line-strong);
+      border-radius: 6px;
+      font-size: 13px;
+      box-sizing: border-box;
+      background: var(--bg-surface);
+    }
+    .user-picker-dropdown {
+      display: none;
+      position: absolute;
+      top: 100%;
+      left: 0;
+      right: 0;
+      max-height: 200px;
+      overflow-y: auto;
+      background: var(--bg-surface);
+      border: 1px solid var(--line-strong);
+      border-radius: 0 0 6px 6px;
+      box-shadow: var(--shadow);
+      z-index: 10001;
+    }
+    .user-picker-dropdown.visible { display: block; }
+    .user-picker-item {
+      padding: 8px 12px;
+      cursor: pointer;
+      font-size: 13px;
+      border-bottom: 1px solid var(--line-weak);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .user-picker-item:last-child { border-bottom: none; }
+    .user-picker-item:hover,
+    .user-picker-item.highlighted {
+      background: var(--bg-hover);
+    }
+    .user-picker-item .up-username { font-weight: 600; }
+    .user-picker-item .up-displayname {
+      color: var(--text-muted);
+      font-size: 12px;
+    }
+    .user-picker-empty {
+      padding: 12px;
+      text-align: center;
+      color: var(--text-muted);
+      font-size: 13px;
+    }
+
+    /* ─── 検索 ─────────────────────────────────────────── */
+    .search-bar { margin-bottom: 12px; }
+    .search-bar input {
+      width: 100%;
+      padding: 8px 12px;
+      border: 1px solid var(--line-strong);
+      border-radius: 6px;
+      font-size: 13px;
+      color: var(--text-main);
+      background: var(--bg-surface);
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    .search-bar input:focus {
+      outline: none;
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px rgba(52, 87, 213, 0.10);
+    }
+    .project-count {
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-bottom: 8px;
+    }
+
+    /* ─── ローディング ─────────────────────────────────── */
+    .loading-overlay {
+      display: none;
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(247, 248, 250, 0.8);
+      z-index: 9999;
+      align-items: center;
+      justify-content: center;
+    }
+    .loading-overlay.visible { display: flex; }
+    .spinner {
+      width: 32px; height: 32px;
+      border: 4px solid var(--line-mid);
+      border-top-color: var(--primary);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ─── 切替メニュー設定 DnD行 ──────────────────── */
+    .sm-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: var(--bg-surface);
+      border: 1px solid var(--line-weak);
+      border-radius: 6px;
+      padding: 7px 10px;
+      font-size: 13px;
+      cursor: default;
+      user-select: none;
+      transition: box-shadow 0.15s, opacity 0.15s;
+    }
+    .sm-row.sm-hidden { opacity: 0.45; }
+    .sm-row.sm-dragging {
+      opacity: 0.25;
+      border-style: dashed;
+    }
+    .sm-row.sm-over {
+      box-shadow: 0 0 0 2px var(--primary);
+    }
+    .sm-handle {
+      cursor: grab;
+      color: var(--text-muted);
+      font-size: 15px;
+      padding: 0 2px;
+      line-height: 1;
+    }
+    .sm-handle:active { cursor: grabbing; }
+    .sm-name {
+      flex: 1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .sm-lobby-badge {
+      font-size: 10px;
+      background: #e8f4ff;
+      color: #1a73e8;
+      border: 1px solid #a8d0f5;
+      border-radius: 10px;
+      padding: 1px 7px;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+    .sm-eye-btn {
+      background: none;
+      border: none;
+      cursor: pointer;
+      font-size: 15px;
+      padding: 0 3px;
+      line-height: 1;
+      opacity: 0.75;
+      transition: opacity 0.1s;
+    }
+    .sm-eye-btn:hover { opacity: 1; }
+
+    /* ─── 通知設定モーダル (Phase 5-5) ───────────────── */
+    .notif-toggle-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      padding: 14px 16px;
+      border: 1px solid var(--line-weak);
+      border-radius: 6px;
+      margin-bottom: 10px;
+      background: var(--bg-subtle);
+      transition: border-color 0.15s;
+    }
+    .notif-toggle-row:hover {
+      border-color: var(--line-strong);
+    }
+    .notif-toggle-row input[type="checkbox"] {
+      width: 18px;
+      height: 18px;
+      margin-top: 2px;
+      cursor: pointer;
+      accent-color: var(--primary);
+      flex-shrink: 0;
+    }
+    .notif-toggle-label {
+      flex: 1;
+    }
+    .notif-toggle-label .notif-toggle-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text-main);
+      display: block;
+      margin-bottom: 3px;
+    }
+    .notif-toggle-label .notif-toggle-desc {
+      font-size: 12px;
+      color: var(--text-muted);
+      line-height: 1.4;
+    }
+    .notif-settings-note {
+      font-size: 12px;
+      color: var(--text-muted);
+      background: var(--warning-soft);
+      border: 1px solid #fde68a;
+      border-radius: 6px;
+      padding: 10px 14px;
+      margin-top: 14px;
+      line-height: 1.5;
+    }
+
+  </style>
+</head>
+<body>
+  <div class="loading-overlay" id="loadingOverlay"><div class="spinner"></div></div>
+
+  <div class="container">
+
+    <!-- ヘッダー -->
+    <div class="header">
+      <h1>プロジェクト管理</h1>
+      <div class="header-links">
+        <div class="current-user-info" id="currentUserInfo"></div>
+        <a href="/WebGantt/account.html">アカウント管理</a>
+        <a href="/WebGantt/gantt/gantt-collab.html" id="backToGanttLink">ガントチャートへ戻る</a>
+      </div>
+    </div>
+
+    <!-- プロジェクト作成 -->
+    <div class="card">
+      <h2>プロジェクト作成</h2>
+      <div class="form-group">
+        <label>プロジェクト名</label>
+        <input type="text" id="newProjectName">
+      </div>
+      <div class="form-group">
+        <label>プロジェクトID（省略可）</label>
+        <input type="text" id="newProjectId">
+        <div class="hint">省略すると自動生成されます。英数字・ハイフン・アンダースコアのみ使用可能</div>
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-primary" onclick="createProject()">プロジェクトを作成</button>
+      </div>
+      <div class="message" id="createMessage"></div>
+    </div>
+
+    <!-- プロジェクト一覧 -->
+    <div class="card">
+      <h2>プロジェクト一覧</h2>
+
+      <div class="search-bar">
+        <input type="text" id="projectSearch" placeholder="プロジェクト名で検索" oninput="filterProjects()">
+      </div>
+      <div class="project-count" id="projectCount"></div>
+
+      <table id="projectTable">
+        <thead>
+          <tr>
+            <th>プロジェクト名</th>
+            <th>プロジェクトID</th>
+            <th>権限</th>
+            <th>バージョン</th>
+            <th>更新日時</th>
+            <th>操作</th>
+          </tr>
+        </thead>
+        <tbody id="projectTableBody"></tbody>
+      </table>
+      <!-- プロジェクト一覧 ページネーションバー -->
+      <div id="projectPagination" style="display:none; align-items:center; justify-content:space-between; margin-top:8px; padding:4px 0;">
+        <button class="btn btn-secondary btn-small" id="projectPagePrev" onclick="changeProjectPage(-1)">&lsaquo; 前へ</button>
+        <span id="projectPageInfo" style="font-size:12px; color:var(--text-muted);"></span>
+        <button class="btn btn-secondary btn-small" id="projectPageNext" onclick="changeProjectPage(1)">次へ &rsaquo;</button>
+      </div>
+      <div class="empty-state" id="emptyState" style="display:none;">
+        プロジェクトがありません。下のフォームから作成してください。
+      </div>
+      <div class="message" id="projectListMessage"></div>
+    </div>
+
+    <!-- ログイン時の表示プロジェクト設定（全ユーザー） -->
+    <div class="card" id="loginProjectCard">
+      <h2>ログイン時の表示プロジェクト設定</h2>
+      <p style="font-size:13px;color:var(--text-sub);margin-bottom:14px;">
+        ログイン時にガントチャートで最初に表示するプロジェクトを設定します。<br>
+        <span style="color:var(--text-muted);font-size:12px;">未設定の場合はロビープロジェクトが使用されます</span>
+      </p>
+      <div style="display:flex;gap:8px;align-items:flex-end;">
+        <div style="flex:1;">
+          <label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px;">表示プロジェクト</label>
+          <select id="loginProjectSelect" style="width:100%;padding:8px 10px;border:1px solid var(--line-strong);border-radius:6px;font-size:13px;background:var(--bg-surface);">
+            <option value="">── ロビープロジェクト（デフォルト） ──</option>
+          </select>
+        </div>
+        <button class="btn btn-primary" onclick="setLoginProject()" style="white-space:nowrap;">設定</button>
+      </div>
+      <div class="message" id="loginProjectMessage"></div>
+    </div>
+
+    <!-- 切替メニュー設定カード（全ユーザー） -->
+    <div class="card" id="switchMenuCard">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap;">
+        <h2 style="margin:0;">切替メニュー設定</h2>
+        <span style="font-size:12px;font-weight:400;color:var(--text-sub);">個人設定（自分だけに反映）</span>
+        <span id="smSaveStatus" style="font-size:12px;padding:2px 10px;border-radius:10px;border:1px solid;display:none;"></span>
+      </div>
+      <p style="font-size:13px;color:var(--text-sub);margin-bottom:14px;">
+        ガントチャートの「プロジェクト切替」メニューに表示するプロジェクトの順番・表示/非表示を個人設定します。<br>
+        <span style="color:var(--text-muted);font-size:12px;">⠿ ハンドルをドラッグして並び替え　　👁 で表示・🙈 で非表示　　変更後は「設定を保存」を押してください</span>
+      </p>
+      <div id="smInitNotice" style="display:none;font-size:12px;background:rgba(33,150,243,0.08);border:1px solid rgba(33,150,243,0.3);border-radius:6px;padding:8px 12px;margin-bottom:10px;color:#1565c0;">
+        ℹ️ 初期状態です。現在のプロジェクト一覧の順番で表示されています。並び替えや非表示の設定を変更して「設定を保存」を押すと、ガントチャートの切替メニューに反映されます。
+      </div>
+      <div id="switchMenuList" style="display:flex;flex-direction:column;gap:6px;min-height:40px;"></div>
+      <div style="margin-top:12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+        <button class="btn btn-primary" id="smSaveBtn" onclick="saveSwitchMenuSettings()">設定を保存</button>
+        <button class="btn btn-secondary" onclick="resetSwitchMenuSettings()">デフォルトに戻す</button>
+        <div class="message" id="switchMenuMessage" style="flex:1;margin:0;min-width:0;"></div>
+      </div>
+    </div>
+
+    <!-- ロビープロジェクト設定（管理者のみ表示） -->
+    <div class="card" id="lobbyCard" style="display:none;">
+      <h2>ロビープロジェクト設定 <span class="badge" style="background:var(--primary);color:#fff;font-size:11px;padding:2px 8px;border-radius:4px;margin-left:6px;">管理者のみ</span></h2>
+      <p style="font-size:13px;color:var(--text-sub);margin-bottom:14px;">
+        新規ユーザー登録時に自動でメンバー追加されるプロジェクトです。<br>
+        ガントチャートをプロジェクト指定なしで開いた際もこのプロジェクトに接続されます。<br>
+        現在のロビー: <strong id="currentLobbyName" style="color:var(--primary);">読み込み中...</strong>
+      </p>
+      <div style="display:flex;gap:8px;align-items:flex-end;">
+        <div style="flex:1;">
+          <label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px;">新しいロビープロジェクト</label>
+          <select id="lobbyProjectSelect" style="width:100%;padding:8px 10px;border:1px solid var(--line-strong);border-radius:6px;font-size:13px;background:var(--bg-surface);">
+            <option value="">── プロジェクトを選択 ──</option>
+          </select>
+        </div>
+        <button class="btn btn-primary" onclick="setLobbyProject()" style="white-space:nowrap;">ロビーに設定</button>
+      </div>
+      <div class="message" id="lobbyMessage"></div>
+    </div>
+
+    <!-- ─── アナウンス送信カード (Phase 5-7) ─── -->
+    <div class="card" id="announceCard" style="display:none;">
+      <h2>📢 アナウンス送信 <span class="badge" style="background:var(--primary);color:#fff;font-size:11px;padding:2px 8px;border-radius:4px;margin-left:6px;">管理者のみ</span></h2>
+      <p style="font-size:13px;color:var(--text-sub);margin-bottom:14px;">
+        全ユーザーまたは特定プロジェクトのメンバーに通知を一斉送信します。<br>
+        送信した通知は各ユーザーのガントチャート内「📢 アナウンス」タブに表示されます。
+      </p>
+
+      <!-- 送信先 -->
+      <div style="margin-bottom:14px;">
+        <label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:6px;">送信先</label>
+        <div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap;">
+          <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;">
+            <input type="radio" name="announceTarget" value="all" id="announceTargetAll" checked onchange="onAnnounceTargetChange()">
+            全ユーザー
+          </label>
+          <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;">
+            <input type="radio" name="announceTarget" value="project" id="announceTargetProject" onchange="onAnnounceTargetChange()">
+            特定プロジェクトのメンバー
+          </label>
+          <select id="announceProjectSelect" style="display:none;padding:6px 10px;border:1px solid var(--line-strong);border-radius:6px;font-size:13px;background:var(--bg-surface);min-width:200px;">
+            <option value="">── プロジェクトを選択 ──</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- タイトル -->
+      <div style="margin-bottom:10px;">
+        <label for="announceTitleInput" style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px;">タイトル <span style="color:#e53e3e;">*</span></label>
+        <input type="text" id="announceTitleInput" maxlength="100"
+          placeholder="アナウンスのタイトルを入力（必須・最大100文字）"
+          oninput="onAnnounceTitleInput()"
+          style="width:100%;padding:8px 10px;border:1px solid var(--line-strong);border-radius:6px;font-size:13px;background:var(--bg-surface);">
+      </div>
+
+      <!-- 本文 -->
+      <div style="margin-bottom:14px;">
+        <label for="announceBodyInput" style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:6px;">本文 <span style="color:var(--text-muted);">(任意・最大500文字)</span></label>
+        <textarea id="announceBodyInput" maxlength="500" rows="7"
+          oninput="onAnnounceBodyInput()"
+          style="width:100%;min-height:160px;padding:10px 12px;border:1px solid var(--line-strong);border-radius:6px;font-size:13px;background:var(--bg-surface);resize:vertical;box-sizing:border-box;font-family:inherit;line-height:1.6;"></textarea>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:4px;">
+          <span id="announceDraftIndicator" style="font-size:11px;color:var(--text-muted);"></span>
+          <span id="announceCharCount" style="font-size:11px;color:var(--text-muted);">0 / 500</span>
+        </div>
+      </div>
+
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <button type="button" class="btn" onclick="announceDiscardDraft()" style="font-size:12px;color:var(--text-muted);padding:6px 12px;">🗑 下書きを削除</button>
+        <button class="btn btn-primary" onclick="sendAnnouncement()" style="display:flex;align-items:center;gap:6px;">📢 送信</button>
+      </div>
+      <div class="message" id="announceMessage" style="margin-top:8px;"></div>
+    </div>
+
+  <!-- ─── 操作履歴モーダル ─────────────────────────────── -->
+  <div class="modal-overlay" id="opLogModalOverlay">
+    <div class="modal" style="max-width:750px;">
+      <div class="modal-header">
+        <h3 id="opLogModalTitle">操作履歴</h3>
+        <button class="modal-close" onclick="closeOpLogModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <table class="member-table" id="opLogTable">
+          <thead>
+            <tr>
+              <th style="width:140px;">日時</th>
+              <th style="width:100px;">ユーザー</th>
+              <th style="width:110px;">操作</th>
+              <th>詳細</th>
+              <th style="width:60px;">Ver</th>
+            </tr>
+          </thead>
+          <tbody id="opLogTableBody"></tbody>
+        </table>
+        <div id="opLogPagination" style="display:none;align-items:center;justify-content:space-between;margin-top:8px;padding:4px 0;">
+          <button class="btn btn-secondary btn-small" id="opLogPagePrev" onclick="changeOpLogPage(-1)">&lsaquo; 前へ</button>
+          <span id="opLogPageInfo" style="font-size:12px;color:var(--text-muted);"></span>
+          <button class="btn btn-secondary btn-small" id="opLogPageNext" onclick="changeOpLogPage(1)">次へ &rsaquo;</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─── メンバー管理モーダル ─────────────────────────── -->
+  <div class="modal-overlay" id="memberModalOverlay">
+    <div class="modal">
+      <div class="modal-header">
+        <h3 id="memberModalTitle">メンバー管理</h3>
+        <button class="modal-close" onclick="closeMemberModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+
+        <!-- メンバー追加（先頭） -->
+        <div id="addMemberSection" style="margin-bottom:20px; padding-bottom:16px; border-bottom:1px solid var(--line-weak);">
+          <h4 style="font-size:14px; margin-bottom:12px; color:var(--text-sub);">メンバー追加</h4>
+          <div style="display:flex; gap:8px; align-items:flex-start;">
+            <div style="flex:1;">
+              <label style="font-size:12px; color:var(--text-muted); display:block; margin-bottom:4px;">ユーザーを検索</label>
+              <div class="user-picker">
+                <input type="text" id="userSearchInput" class="user-picker-input" placeholder="ユーザー名または表示名で検索..." autocomplete="off" oninput="onUserSearchInput()" onkeydown="onUserSearchKeydown(event)" onfocus="renderUserPickerDropdown(this.value)" onblur="setTimeout(function(){document.getElementById('userPickerDropdown').classList.remove('visible');},200)">
+                <div class="user-picker-dropdown" id="userPickerDropdown"></div>
+              </div>
+              <input type="hidden" id="selectedUserId" value="">
+              <input type="hidden" id="selectedUsername" value="">
+            </div>
+            <div>
+              <label style="font-size:12px; color:var(--text-muted); display:block; margin-bottom:4px;">権限</label>
+              <select id="newMemberRole" class="role-select" style="padding:8px 10px;">
+                <option value="member">メンバー</option>
+                <option value="manager">PJ管理</option>
+              </select>
+            </div>
+            <button class="btn btn-primary btn-small" id="addMemberBtn" style="margin-top:20px;" disabled onclick="addMember()">追加</button>
+          </div>
+          <div class="message" id="memberMessage"></div>
+        </div>
+
+        <!-- 現在の登録メンバー一覧（下部） -->
+        <h4 style="font-size:14px; margin-bottom:10px; color:var(--text-sub);">登録メンバー</h4>
+        <table class="member-table" id="memberTable">
+          <thead>
+            <tr>
+              <th>ユーザー名</th>
+              <th>表示名</th>
+              <th>権限</th>
+              <th>権限操作</th>
+            </tr>
+          </thead>
+          <tbody id="memberTableBody"></tbody>
+        </table>
+        <!-- ページネーションバー -->
+        <div id="memberPagination" style="display:none; align-items:center; justify-content:space-between; margin-top:8px; padding:4px 0;">
+          <button class="btn btn-secondary btn-small" id="memberPagePrev" onclick="changeMemberPage(-1)">&lsaquo; 前へ</button>
+          <span id="memberPageInfo" style="font-size:12px; color:var(--text-muted);"></span>
+          <button class="btn btn-secondary btn-small" id="memberPageNext" onclick="changeMemberPage(1)">次へ &rsaquo;</button>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ─── 通知設定モーダル (Phase 5-5) ─────────────────── -->
+  <div class="modal-overlay" id="notifModalOverlay">
+    <div class="modal" style="max-width:520px;height:auto;max-height:600px;">
+      <div class="modal-header">
+        <h3 id="notifModalTitle">通知設定</h3>
+        <button class="modal-close" onclick="closeNotifModal()">&times;</button>
+      </div>
+      <div class="modal-body" style="overflow-y:auto;">
+        <p style="font-size:13px;color:var(--text-sub);margin-bottom:16px;">
+          このプロジェクトの通知設定を管理します。<br>
+          各通知のON/OFFを切り替えることができます。
+        </p>
+
+        <div class="notif-toggle-row">
+          <input type="checkbox" id="notifSettingDelayAlert" checked>
+          <div class="notif-toggle-label">
+            <span class="notif-toggle-title">遅延アラート通知</span>
+            <span class="notif-toggle-desc">タスクの期限切れ・遅延を検知した際に通知します</span>
+          </div>
+        </div>
+
+        <div class="notif-toggle-row">
+          <input type="checkbox" id="notifSettingTaskAssign" checked>
+          <div class="notif-toggle-label">
+            <span class="notif-toggle-title">担当者割り当て通知</span>
+            <span class="notif-toggle-desc">タスクの担当者が変更された際に通知します</span>
+          </div>
+        </div>
+
+        <div class="notif-toggle-row">
+          <input type="checkbox" id="notifSettingMention" checked>
+          <div class="notif-toggle-label">
+            <span class="notif-toggle-title">メンション通知</span>
+            <span class="notif-toggle-desc">@メンションで指名された際に通知します</span>
+          </div>
+        </div>
+
+        <div class="notif-toggle-row">
+          <input type="checkbox" id="notifSettingAssigneeOnly" checked>
+          <div class="notif-toggle-label">
+            <span class="notif-toggle-title">担当者に割り当てられている時だけ予告表示</span>
+            <span class="notif-toggle-desc">ONの場合、タスクの担当者にのみ予告通知を送信します（担当者がいない場合は通知しません）</span>
+          </div>
+        </div>
+
+        <div class="notif-toggle-row">
+          <input type="checkbox" id="notifSettingStartAdvanceEnabled" checked onchange="toggleAdvanceDaysInput('start')">
+          <div class="notif-toggle-label">
+            <span class="notif-toggle-title">開始予告を有効にする</span>
+            <span class="notif-toggle-desc">OFFの場合は開始予告通知を送信しません</span>
+          </div>
+        </div>
+
+        <div class="notif-toggle-row" style="align-items:center;">
+          <div class="notif-toggle-label" style="flex:0 0 auto;margin-right:12px;">
+            <span class="notif-toggle-title">開始予告（備忘録）</span>
+            <span class="notif-toggle-desc">開始日のN日前に通知します（0=OFF）</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:6px;">
+            <input type="number" id="notifSettingStartAdvanceDays" value="3" min="0" max="30" style="width:60px;padding:6px 8px;border:1px solid var(--line-strong);border-radius:6px;font-size:14px;text-align:center;">
+            <span style="font-size:13px;color:var(--text-sub);">日前</span>
+          </div>
+        </div>
+
+        <div class="notif-toggle-row">
+          <input type="checkbox" id="notifSettingEndAdvanceEnabled" checked onchange="toggleAdvanceDaysInput('end')">
+          <div class="notif-toggle-label">
+            <span class="notif-toggle-title">終了予告を有効にする</span>
+            <span class="notif-toggle-desc">OFFの場合は終了予告通知を送信しません</span>
+          </div>
+        </div>
+
+        <div class="notif-toggle-row" style="align-items:center;">
+          <div class="notif-toggle-label" style="flex:0 0 auto;margin-right:12px;">
+            <span class="notif-toggle-title">終了予告（備忘録）</span>
+            <span class="notif-toggle-desc">終了期限のN日前に通知します（0=OFF）</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:6px;">
+            <input type="number" id="notifSettingAdvanceDays" value="3" min="0" max="30" style="width:60px;padding:6px 8px;border:1px solid var(--line-strong);border-radius:6px;font-size:14px;text-align:center;">
+            <span style="font-size:13px;color:var(--text-sub);">日前</span>
+          </div>
+        </div>
+
+        <div class="notif-toggle-row">
+          <input type="checkbox" id="notifSettingEmailAlert">
+          <div class="notif-toggle-label">
+            <span class="notif-toggle-title">遅延メール通知（設定のみ）</span>
+            <span class="notif-toggle-desc">遅延検知時のメール通知を有効にします</span>
+          </div>
+        </div>
+
+        <div class="notif-settings-note">
+          ※「遅延メール通知」は設定のみです。実際のメール送信機能は今後のフェーズで実装予定です。
+        </div>
+
+        <div style="display:flex;gap:10px;align-items:center;margin-top:18px;">
+          <button class="btn btn-primary" onclick="saveNotifSettings()">保存</button>
+          <button class="btn btn-secondary" onclick="closeNotifModal()">キャンセル</button>
+          <div class="message" id="notifMessage" style="flex:1;margin:0;min-width:0;"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+
+  <script>
+    let currentUser = null;
+    let allProjects = [];
+    let editingId = null;
+    let currentLobbyId = '';   // 現在のロビープロジェクトID
+    let projectPage = 0;             // プロジェクト一覧の現在ページ（0オリジン）
+    const PROJECTS_PER_PAGE = 10;     // 1ページの表示件数
+    let currentMemberProjectId = null;
+    let currentMembers = [];
+    let candidateUsers = [];
+    let highlightedIndex = -1;
+    let memberPage = 0;           // 現在ページ（0オリジン）
+    const MEMBERS_PER_PAGE = 6;   // 1ページの表示件数
+
+    // ─── 初期化 ──────────────────────────────────────
+    (async function init() {
+      try {
+        const authRes = await fetch('/WebGantt/api/auth.php?action=me', { credentials: 'include' });
+        const authData = await authRes.json();
+        if (!authData.authenticated) {
+          window.location.href = '/WebGantt/login.html?redirect=' + encodeURIComponent(window.location.pathname);
+          return;
+        }
+        currentUser = authData.user;
+        showUserInfo();
+        await loadProjectList();
+        // ログイン時表示プロジェクト設定を読み込み（全ユーザー）
+        await loadLoginProjectSettings();
+        // 全ユーザー向けにロビーIDを取得（プロジェクト一覧のバッジ表示に使用）
+        await loadLobbyId();
+        // 全ユーザー向け：切替メニュー設定を読み込み
+        await loadSwitchMenuSettings();
+        // 「ガントチャートへ戻る」リンクに直前のプロジェクトIDを付与
+        const lastProject = sessionStorage.getItem('gantt_last_project');
+        const backLink = document.getElementById('backToGanttLink');
+        if (backLink && lastProject) {
+          backLink.href = '/WebGantt/gantt/gantt-collab.html?project=' + encodeURIComponent(lastProject);
+        }
+        // 管理者のみロビー設定カード・アナウンス送信カードを表示
+        if (currentUser.role === 'admin') {
+          document.getElementById('lobbyCard').style.display = '';
+          document.getElementById('announceCard').style.display = '';  // Phase 5-7
+          await loadLobbySettings();
+          initAnnounceCard();  // Phase 5-7: アナウンスカード初期化
+        }
+      } catch (err) {
+        showMessage('projectListMessage', '初期化エラー: ' + err.message, 'error');
+      }
+    })();
+
+    function showUserInfo() {
+      const el = document.getElementById('currentUserInfo');
+      if (!currentUser) return;
+      const roleText = currentUser.role === 'admin' ? '管理者' : 'ユーザー';
+      el.innerHTML = `<span class="dot" style="background:var(--success)"></span>${currentUser.displayName} (${roleText})`;
+    }
+
+    // ─── プロジェクト一覧読込 ─────────────────────────
+    async function loadProjectList() {
+      try {
+        const res = await fetch('/WebGantt/api/projects.php', { credentials: 'include' });
+        const data = await res.json();
+        if (data.error) {
+          showMessage('projectListMessage', data.error, 'error');
+          return;
+        }
+        allProjects = data.projects || [];
+        renderProjectTable(allProjects);
+      } catch (err) {
+        showMessage('projectListMessage', '一覧取得エラー: ' + err.message, 'error');
+      }
+    }
+
+    // ─── プロジェクトテーブル描画 ─────────────────────
+    function renderProjectTable(projects) {
+      const tbody   = document.getElementById('projectTableBody');
+      const countEl = document.getElementById('projectCount');
+      const emptyEl = document.getElementById('emptyState');
+      const tableEl = document.getElementById('projectTable');
+      const pagBar  = document.getElementById('projectPagination');
+      const prevBtn = document.getElementById('projectPagePrev');
+      const nextBtn = document.getElementById('projectPageNext');
+      const info    = document.getElementById('projectPageInfo');
+      tbody.innerHTML = '';
+
+      const total      = projects.length;
+      const totalPages = Math.ceil(total / PROJECTS_PER_PAGE);
+
+      // ページ番号が範囲外になった場合は先頭ページに戻す
+      if (projectPage >= totalPages) projectPage = Math.max(0, totalPages - 1);
+
+      // 件数表示
+      if (totalPages > 1) {
+        countEl.textContent = `${total}件のプロジェクト（${projectPage + 1} / ${totalPages}ページ）`;
+      } else {
+        countEl.textContent = `${total}件のプロジェクト`;
+      }
+
+      if (total === 0) {
+        tableEl.style.display = 'none';
+        emptyEl.style.display = 'block';
+        pagBar.style.display  = 'none';
+        return;
+      }
+      tableEl.style.display = '';
+      emptyEl.style.display = 'none';
+
+      // ページネーションバー表示制御
+      if (totalPages > 1) {
+        pagBar.style.display  = 'flex';
+        info.textContent      = `${projectPage + 1} / ${totalPages} ページ（全${total}件）`;
+        prevBtn.disabled      = projectPage === 0;
+        nextBtn.disabled      = projectPage >= totalPages - 1;
+      } else {
+        pagBar.style.display  = 'none';
+      }
+
+      // 現在ページ分にスライス
+      const start     = projectPage * PROJECTS_PER_PAGE;
+      const pageItems = projects.slice(start, start + PROJECTS_PER_PAGE);
+
+      pageItems.forEach(p => {
+        const tr = document.createElement('tr');
+        tr.id = `project-row-${p.id}`;
+
+        // 権限バッジ
+        const isAdmin = currentUser.role === 'admin';
+        const canManage = p.canManage || isAdmin;
+        const roleBadge = canManage
+          ? '<span class="role-badge manager">PJ管理</span>'
+          : '<span class="role-badge member">メンバー</span>';
+
+        if (editingId === p.id) {
+          // ── 編集モード ──
+          tr.classList.add('editing');
+          const updated = new Date(p.updated_at).toLocaleString('ja-JP');
+          tr.innerHTML = `
+            <td><input type="text" id="edit-name-${p.id}" value="${escapeHtml(p.name)}"></td>
+            <td><span class="project-id-text">${escapeHtml(p.project_id)}</span></td>
+            <td>${roleBadge}</td>
+            <td>v${p.version}</td>
+            <td>${updated}</td>
+            <td>
+              <div class="cell-actions">
+                <button class="btn btn-primary btn-small" onclick="saveEdit(${p.id})">保存</button>
+                <button class="btn btn-secondary btn-small" onclick="cancelEdit()">キャンセル</button>
+              </div>
+            </td>
+          `;
+        } else {
+          // ── 表示モード ──
+          const ganttUrl = `/WebGantt/gantt/gantt-collab.html?project=${encodeURIComponent(p.project_id)}`;
+          const updated = new Date(p.updated_at).toLocaleString('ja-JP');
+
+          // 権限に応じたボタン
+          const isLobby = (currentLobbyId && p.project_id === currentLobbyId);
+          const buttons = [];
+          // メンバーボタン: PJ管理権限 or admin。ただしロビープロジェクトは admin のみ。
+          if (canManage && (!isLobby || isAdmin)) {
+            buttons.push(`<button class="btn btn-secondary btn-small" onclick="openMemberModal('${escapeHtml(p.project_id)}', '${escapeHtml(p.name)}')">メンバー</button>`);
+            buttons.push(`<button class="btn btn-secondary btn-small" onclick="openNotifModal('${escapeHtml(p.project_id)}', '${escapeHtml(p.name)}')">通知設定</button>`);
+          }
+          // 操作履歴ボタン（全ユーザー）
+          buttons.push(`<button class="btn btn-secondary btn-small" onclick="openOpLogModal('${escapeHtml(p.project_id)}', '${escapeHtml(p.name)}')">履歴</button>`);
+          // 編集ボタン（PJ管理権限 or admin のみ）
+          if (canManage) {
+            buttons.push(`<button class="btn btn-primary btn-small" onclick="startEdit(${p.id})">編集</button>`);
+          }
+          // 削除ボタン: PJ管理権限 or admin のみ。ただしロビープロジェクトは admin のみ削除可能。
+          if (canManage && (!isLobby || isAdmin)) {
+            buttons.push(`<button class="btn btn-danger btn-small" onclick="deleteProject('${escapeHtml(p.project_id)}', '${escapeHtml(p.name)}')">削除</button>`);
+          }
+          // ロビーバッジ（ロビープロジェクトの場合のみ表示）
+          const lobbyBadge = (currentLobbyId && p.project_id === currentLobbyId)
+            ? '<br><span style="display:inline-block;margin-top:3px;background:#e8f4ff;color:#1a73e8;font-size:10px;padding:1px 8px;border-radius:10px;border:1px solid #a8d0f5;font-weight:600;">🏠 ロビープロジェクト</span>'
+            : '';
+          tr.innerHTML = `
+            <td><a href="${ganttUrl}" class="project-name-link">${escapeHtml(p.name)}</a>${lobbyBadge}</td>
+            <td><span class="project-id-text">${escapeHtml(p.project_id)}</span></td>
+            <td>${roleBadge}</td>
+            <td>v${p.version}</td>
+            <td>${updated}</td>
+            <td><div class="cell-actions">${buttons.join(' ')}</div></td>
+          `;
+        }
+        tbody.appendChild(tr);
+      });
+    }
+
+    // ─── 編集 ──────────────────────────────────────────
+    function startEdit(id) {
+      editingId = id;
+      renderProjectTable(getFilteredProjects());
+      setTimeout(() => {
+        const el = document.getElementById(`edit-name-${id}`);
+        if (el) el.focus();
+      }, 50);
+    }
+
+    function cancelEdit() {
+      editingId = null;
+      renderProjectTable(getFilteredProjects());
+    }
+
+    async function saveEdit(id) {
+      const newName = document.getElementById(`edit-name-${id}`).value.trim();
+      if (!newName) {
+        showMessage('projectListMessage', 'プロジェクト名は必須です', 'error');
+        return;
+      }
+
+      const p = allProjects.find(x => x.id === id);
+      if (!p) return;
+
+      showLoading(true);
+      try {
+        const res = await fetch('/WebGantt/api/projects.php?action=rename', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ project_id: p.project_id, name: newName }),
+        });
+        const data = await res.json();
+        if (data.error) {
+          showMessage('projectListMessage', data.error, 'error');
+        } else if (data.ok) {
+          showMessage('projectListMessage', `プロジェクト「${newName}」を更新しました`, 'success');
+          editingId = null;
+          await loadProjectList();
+        }
+      } catch (err) {
+        showMessage('projectListMessage', '通信エラー: ' + err.message, 'error');
+      }
+      showLoading(false);
+    }
+
+    // ─── プロジェクト作成 ──────────────────────────────
+    async function createProject() {
+      const name = document.getElementById('newProjectName').value.trim();
+      const customId = document.getElementById('newProjectId').value.trim();
+
+      if (!name) {
+        showMessage('createMessage', 'プロジェクト名は必須です', 'error');
+        return;
+      }
+
+      showLoading(true);
+      try {
+        const body = { name };
+        if (customId) body.project_id = customId;
+
+        const res = await fetch('/WebGantt/api/projects.php', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify(body),
+        });
+        const data = await res.json();
+        if (data.error) {
+          showMessage('createMessage', data.error, 'error');
+        } else if (data.ok) {
+          showMessage('createMessage', `プロジェクト「${name}」を作成しました（PJ管理権限が付与されました）`, 'success');
+          document.getElementById('newProjectName').value = '';
+          document.getElementById('newProjectId').value = '';
+          await loadProjectList();
+        }
+      } catch (err) {
+        showMessage('createMessage', '通信エラー: ' + err.message, 'error');
+      }
+      showLoading(false);
+    }
+
+    // ─── プロジェクト削除 ──────────────────────────────
+    async function deleteProject(projectId, projectName) {
+      if (!confirm(`プロジェクト「${projectName}」を削除しますか？\n保存されているタスクデータも全て削除されます。\nこの操作は取り消せません。`)) return;
+
+      showLoading(true);
+      try {
+        const res = await fetch(`/WebGantt/api/projects.php?id=${encodeURIComponent(projectId)}`, {
+          method: 'DELETE',
+          credentials: 'include',
+        });
+        const data = await res.json();
+        if (data.error) {
+          showMessage('projectListMessage', data.error, 'error');
+        } else if (data.ok) {
+          showMessage('projectListMessage', `プロジェクト「${projectName}」を削除しました`, 'success');
+          await loadProjectList();
+        }
+      } catch (err) {
+        showMessage('projectListMessage', '通信エラー: ' + err.message, 'error');
+      }
+      showLoading(false);
+    }
+
+    // ─── メンバー管理モーダル ──────────────────────────
+    async function openMemberModal(projectId, projectName) {
+      currentMemberProjectId = projectId;
+      document.getElementById('memberModalTitle').textContent = `メンバー管理 - ${projectName}`;
+      document.getElementById('memberModalOverlay').classList.add('visible');
+      document.getElementById('memberMessage').className = 'message';
+      document.getElementById('userSearchInput').value = '';
+      document.getElementById('selectedUserId').value = '';
+      document.getElementById('selectedUsername').value = '';
+      document.getElementById('userPickerDropdown').classList.remove('visible');
+      document.getElementById('addMemberBtn').disabled = true;
+      candidateUsers = [];
+      highlightedIndex = -1;
+      memberPage = 0;   // モーダルオープン時は常に1ページ目から
+      await loadMembers(projectId);
+      // PJ管理権限がある場合は候補ユーザーを取得
+      const canManage = document.getElementById('addMemberSection').style.display !== 'none';
+      if (canManage) {
+        await loadCandidateUsers(projectId);
+      }
+    }
+
+    function closeMemberModal() {
+      document.getElementById('memberModalOverlay').classList.remove('visible');
+      document.getElementById('userPickerDropdown').classList.remove('visible');
+      currentMemberProjectId = null;
+      currentMembers = [];
+      candidateUsers = [];
+      highlightedIndex = -1;
+    }
+
+    async function loadMembers(projectId) {
+      const tbody = document.getElementById('memberTableBody');
+      tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; color:var(--text-muted);">読み込み中...</td></tr>';
+
+      try {
+        const res = await fetch(`/WebGantt/api/projects.php?action=members&id=${encodeURIComponent(projectId)}`, { credentials: 'include' });
+        const data = await res.json();
+        if (data.error) {
+          tbody.innerHTML = `<tr><td colspan="4" style="color:var(--danger);">${escapeHtml(data.error)}</td></tr>`;
+          return;
+        }
+
+        // PJ管理を先頭、メンバーを後尾に並び替え
+        currentMembers = (data.members || []).sort((a, b) => {
+          if (a.pmRole === 'manager' && b.pmRole !== 'manager') return -1;
+          if (a.pmRole !== 'manager' && b.pmRole === 'manager') return  1;
+          return a.username.localeCompare(b.username, 'ja');
+        });
+        // ロビープロジェクトのメンバー管理は管理者のみ可能
+        const isCurrentLobby = (currentLobbyId && currentMemberProjectId === currentLobbyId);
+        const canManage = isCurrentLobby
+          ? currentUser.role === 'admin'
+          : (data.canManage || currentUser.role === 'admin');
+
+        // メンバー追加セクションの表示制御
+        document.getElementById('addMemberSection').style.display = canManage ? '' : 'none';
+
+        if (currentMembers.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; color:var(--text-muted);">メンバーがいません</td></tr>';
+          return;
+        }
+
+        renderMemberPage(canManage);
+      } catch (err) {
+        tbody.innerHTML = `<tr><td colspan="4" style="color:var(--danger);">取得エラー: ${escapeHtml(err.message)}</td></tr>`;
+      }
+    }
+
+    // ─── 候補ユーザー取得 ──────────────────────────────
+    async function loadCandidateUsers(projectId) {
+      try {
+        const res = await fetch(`/WebGantt/api/projects.php?action=candidateUsers&id=${encodeURIComponent(projectId)}`, { credentials: 'include' });
+        const data = await res.json();
+        if (data.error) {
+          candidateUsers = [];
+          return;
+        }
+        candidateUsers = data.candidates || [];
+      } catch (err) {
+        candidateUsers = [];
+      }
+    }
+
+    // ─── 候補ユーザードロップダウン描画 ──────────────────
+    function renderUserPickerDropdown(filterText) {
+      const dropdown = document.getElementById('userPickerDropdown');
+      const q = filterText.trim().toLowerCase();
+      const filtered = q
+        ? candidateUsers.filter(u =>
+            u.username.toLowerCase().includes(q) ||
+            (u.display_name || '').toLowerCase().includes(q)
+          )
+        : candidateUsers;
+
+      highlightedIndex = -1;
+
+      if (filtered.length === 0) {
+        dropdown.innerHTML = '<div class="user-picker-empty">該当するユーザーがいません</div>';
+        dropdown.classList.add('visible');
+        return;
+      }
+
+      dropdown.innerHTML = filtered.map((u, i) => {
+        const dn = u.display_name ? `<span class="up-displayname">(${escapeHtml(u.display_name)})</span>` : '';
+        return `<div class="user-picker-item" data-uid="${u.id}" data-uname="${escapeHtml(u.username)}" onmousedown="selectCandidateUser(${u.id}, '${escapeHtml(u.username)}'); event.preventDefault();">
+          <span class="up-username">${escapeHtml(u.username)}</span> ${dn}
+        </div>`;
+      }).join('');
+      dropdown.classList.add('visible');
+    }
+
+    function selectCandidateUser(uid, username) {
+      document.getElementById('userSearchInput').value = username;
+      document.getElementById('selectedUserId').value = uid;
+      document.getElementById('selectedUsername').value = username;
+      document.getElementById('userPickerDropdown').classList.remove('visible');
+      document.getElementById('addMemberBtn').disabled = false;
+      highlightedIndex = -1;
+    }
+
+    function onUserSearchInput() {
+      const input = document.getElementById('userSearchInput');
+      // ユーザーが手入力で変更した場合は選択状態をクリア
+      const selectedUname = document.getElementById('selectedUsername').value;
+      if (input.value.trim() !== selectedUname) {
+        document.getElementById('selectedUserId').value = '';
+        document.getElementById('selectedUsername').value = '';
+        document.getElementById('addMemberBtn').disabled = true;
+      }
+      renderUserPickerDropdown(input.value);
+    }
+
+    function onUserSearchKeydown(e) {
+      const dropdown = document.getElementById('userPickerDropdown');
+      if (!dropdown.classList.contains('visible')) return;
+
+      const items = dropdown.querySelectorAll('.user-picker-item');
+      if (items.length === 0) return;
+
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        highlightedIndex = Math.min(highlightedIndex + 1, items.length - 1);
+        updateHighlight(items);
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        highlightedIndex = Math.max(highlightedIndex - 1, 0);
+        updateHighlight(items);
+      } else if (e.key === 'Enter' && highlightedIndex >= 0) {
+        e.preventDefault();
+        const item = items[highlightedIndex];
+        if (item) {
+          const uid = parseInt(item.dataset.uid);
+          const uname = item.dataset.uname;
+          selectCandidateUser(uid, uname);
+        }
+      } else if (e.key === 'Escape') {
+        dropdown.classList.remove('visible');
+      }
+    }
+
+    function updateHighlight(items) {
+      items.forEach((item, i) => {
+        item.classList.toggle('highlighted', i === highlightedIndex);
+        if (i === highlightedIndex) {
+          item.scrollIntoView({ block: 'nearest' });
+        }
+      });
+    }
+
+    async function addMember() {
+      const username = document.getElementById('selectedUsername').value.trim();
+      const pmRole = document.getElementById('newMemberRole').value;
+      if (!username) {
+        showMemberMessage('リストからユーザーを選択してください', 'error');
+        return;
+      }
+      if (!currentMemberProjectId) return;
+
+      showLoading(true);
+      try {
+        const res = await fetch('/WebGantt/api/projects.php?action=addMember', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ project_id: currentMemberProjectId, username, pmRole }),
+        });
+        const data = await res.json();
+        if (data.error) {
+          showMemberMessage(data.error, 'error');
+        } else if (data.ok) {
+          showMemberMessage(`${username} を追加しました`, 'success');
+          document.getElementById('userSearchInput').value = '';
+          document.getElementById('selectedUserId').value = '';
+          document.getElementById('selectedUsername').value = '';
+          document.getElementById('addMemberBtn').disabled = true;
+          await loadMembers(currentMemberProjectId);
+          // 候補リストを更新（追加されたユーザーを除外）
+          await loadCandidateUsers(currentMemberProjectId);
+        }
+      } catch (err) {
+        showMemberMessage('通信エラー: ' + err.message, 'error');
+      }
+      showLoading(false);
+    }
+
+    async function removeMember(userId, username) {
+      if (!confirm(`メンバー「${username}」のアクセス権限を解除しますか？`)) return;
+      if (!currentMemberProjectId) return;
+
+      showLoading(true);
+      try {
+        const res = await fetch('/WebGantt/api/projects.php?action=removeMember', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ project_id: currentMemberProjectId, user_id: userId }),
+        });
+        const data = await res.json();
+        if (data.error) {
+          showMemberMessage(data.error, 'error');
+        } else if (data.ok) {
+          showMemberMessage(`${username} を削除しました`, 'success');
+          await loadMembers(currentMemberProjectId);
+        }
+      } catch (err) {
+        showMemberMessage('通信エラー: ' + err.message, 'error');
+      }
+      showLoading(false);
+    }
+
+    async function changeMemberRole(userId, newRole) {
+      if (!currentMemberProjectId) return;
+
+      try {
+        const res = await fetch('/WebGantt/api/projects.php?action=changeRole', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ project_id: currentMemberProjectId, user_id: userId, pmRole: newRole }),
+        });
+        const data = await res.json();
+        if (data.error) {
+          showMemberMessage(data.error, 'error');
+          await loadMembers(currentMemberProjectId); // 失敗時は再読込で元に戻す
+        } else if (data.ok) {
+          showMemberMessage('権限を変更しました', 'success');
+          await loadMembers(currentMemberProjectId);
+        }
+      } catch (err) {
+        showMemberMessage('通信エラー: ' + err.message, 'error');
+      }
+    }
+
+    // ─── メンバーページネーション ──────────────────────────────
+    function renderMemberPage(canManage) {
+      const tbody  = document.getElementById('memberTableBody');
+      const pagBar = document.getElementById('memberPagination');
+      const prevBtn= document.getElementById('memberPagePrev');
+      const nextBtn= document.getElementById('memberPageNext');
+      const info   = document.getElementById('memberPageInfo');
+
+      const total     = currentMembers.length;
+      const totalPages= Math.ceil(total / MEMBERS_PER_PAGE);
+      const start     = memberPage * MEMBERS_PER_PAGE;
+      const pageItems = currentMembers.slice(start, start + MEMBERS_PER_PAGE);
+
+      // ページネーションバーの表示制御
+      if (totalPages > 1) {
+        pagBar.style.display = 'flex';
+        info.textContent = `${memberPage + 1} / ${totalPages} ページ（全${total}人）`;
+        prevBtn.disabled = memberPage === 0;
+        nextBtn.disabled = memberPage >= totalPages - 1;
+      } else {
+        pagBar.style.display = 'none';
+      }
+
+      tbody.innerHTML = '';
+      pageItems.forEach(m => {
+        const tr = document.createElement('tr');
+        const roleBadge = m.pmRole === 'manager'
+          ? '<span class="role-badge manager">PJ管理</span>'
+          : '<span class="role-badge member">メンバー</span>';
+
+        const actions = [];
+        if (canManage) {
+          actions.push(`
+            <select class="role-select" onchange="changeMemberRole(${m.user_id}, this.value)">
+              <option value="member" ${m.pmRole === 'member' ? 'selected' : ''}>メンバー</option>
+              <option value="manager" ${m.pmRole === 'manager' ? 'selected' : ''}>PJ管理</option>
+            </select>
+          `);
+          if (m.user_id !== currentUser.id || currentUser.role === 'admin') {
+            actions.push(`<button class="btn btn-danger btn-small" onclick="removeMember(${m.user_id}, '${escapeHtml(m.username)}')">解除</button>`);
+          }
+        }
+
+        tr.innerHTML = `
+          <td>${escapeHtml(m.username)}</td>
+          <td>${escapeHtml(m.displayName)}</td>
+          <td>${roleBadge}</td>
+          <td><div class="cell-actions">${actions.join(' ')}</div></td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+
+    function changeMemberPage(delta) {
+      const totalPages = Math.ceil(currentMembers.length / MEMBERS_PER_PAGE);
+      memberPage = Math.max(0, Math.min(memberPage + delta, totalPages - 1));
+      // canManage 状態を再取得
+      const canManage = document.getElementById('addMemberSection').style.display !== 'none';
+      renderMemberPage(canManage);
+    }
+
+    function showMemberMessage(text, type) {
+      const el = document.getElementById('memberMessage');
+      el.textContent = text;
+      el.className = 'message ' + type;
+    }
+
+    // ─── 検索フィルタ ──────────────────────────────────
+    // ─── プロジェクトページネーション ──────────────────────
+    function changeProjectPage(delta) {
+      const total      = getFilteredProjects().length;
+      const totalPages = Math.ceil(total / PROJECTS_PER_PAGE);
+      projectPage = Math.max(0, Math.min(projectPage + delta, totalPages - 1));
+      renderProjectTable(getFilteredProjects());
+    }
+
+    function filterProjects() {
+      projectPage = 0;   // 検索時は常に1ページ目に戻す
+      renderProjectTable(getFilteredProjects());
+    }
+
+    function getFilteredProjects() {
+      const q = (document.getElementById('projectSearch')?.value || '').trim().toLowerCase();
+      if (!q) return allProjects;
+      return allProjects.filter(p =>
+        p.name.toLowerCase().includes(q) ||
+        p.project_id.toLowerCase().includes(q)
+      );
+    }
+
+    // ─── ヘルパー ──────────────────────────────────────
+    function showMessage(elId, text, type) {
+      const el = document.getElementById(elId);
+      el.textContent = text;
+      el.className = 'message ' + type;
+    }
+
+    // ─── 操作履歴モーダル（全ユーザー） ─────────────────────
+    let opLogProjectId = null;
+    let opLogPage = 0;
+    const OPLOGS_PER_PAGE = 20;
+    let opLogTotalPages = 0;
+
+    async function openOpLogModal(projectId, projectName) {
+      opLogProjectId = projectId;
+      opLogPage = 0;
+      document.getElementById('opLogModalTitle').textContent = '操作履歴: ' + projectName;
+      document.getElementById('opLogModalOverlay').classList.add('visible');
+      await loadOpLogs();
+    }
+
+    function closeOpLogModal() {
+      document.getElementById('opLogModalOverlay').classList.remove('visible');
+      opLogProjectId = null;
+    }
+
+    async function loadOpLogs() {
+      const tbody = document.getElementById('opLogTableBody');
+      tbody.innerHTML = '<tr><td colspan="5" style="color:var(--text-muted);text-align:center;padding:20px;">読み込み中...</td></tr>';
+      try {
+        const res = await fetch(`/WebGantt/api/projects.php?action=opLogs&id=${encodeURIComponent(opLogProjectId)}&page=${opLogPage}&perPage=${OPLOGS_PER_PAGE}`, { credentials: 'include' });
+        const data = await res.json();
+        if (data.error) {
+          tbody.innerHTML = `<tr><td colspan="5" style="color:var(--danger);text-align:center;padding:20px;">${escapeHtml(data.error)}</td></tr>`;
+          return;
+        }
+        const logs = data.logs || [];
+        const total = data.total || 0;
+        opLogTotalPages = data.totalPages || 0;
+
+        // ページネーション
+        const pagBar = document.getElementById('opLogPagination');
+        if (opLogTotalPages > 1) {
+          pagBar.style.display = 'flex';
+          document.getElementById('opLogPageInfo').textContent = `${opLogPage + 1} / ${opLogTotalPages} ページ（全${total}件）`;
+          document.getElementById('opLogPagePrev').disabled = opLogPage === 0;
+          document.getElementById('opLogPageNext').disabled = opLogPage >= opLogTotalPages - 1;
+        } else {
+          pagBar.style.display = 'none';
+        }
+
+        if (logs.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="5" style="color:var(--text-muted);text-align:center;padding:20px;">操作履歴がありません</td></tr>';
+          return;
+        }
+
+        // 操作タイプの日本語化
+        const opTypeLabels = {
+          'task_add': 'タスク追加',
+          'task_edit': 'タスク編集',
+          'task_move': 'タスク移動',
+          'task_delete': 'タスク削除',
+          'task_reorder': 'タスク並替',
+          'dep_add': '依存関係追加',
+          'dep_edit': '依存関係編集',
+          'dep_delete': '依存関係削除',
+          'status_change': 'ステータス変更',
+          'state_sync': '状態同期',
+        };
+
+        tbody.innerHTML = '';
+        logs.forEach(log => {
+          const tr = document.createElement('tr');
+          const dt = new Date(log.created_at).toLocaleString('ja-JP');
+          const user = log.display_name || log.username || log.user_id || '不明';
+          const opLabel = opTypeLabels[log.op_type] || log.op_type;
+          // 詳細: payloadから主要な情報を抽出
+          let detail = '';
+          if (log.op_payload) {
+            const p = log.op_payload;
+            if (p.taskName) detail = escapeHtml(p.taskName);
+            else if (p.name) detail = escapeHtml(p.name);
+            else if (p.rowName) detail = escapeHtml(p.rowName);
+            else if (p.taskId) detail = `taskId: ${escapeHtml(String(p.taskId))}`;
+            else detail = '<span style="color:var(--text-muted);">-</span>';
+          } else {
+            detail = '<span style="color:var(--text-muted);">-</span>';
+          }
+
+          tr.innerHTML = `
+            <td style="font-size:12px;">${dt}</td>
+            <td style="font-size:12px;">${escapeHtml(user)}</td>
+            <td style="font-size:12px;"><span class="role-badge member">${escapeHtml(opLabel)}</span></td>
+            <td style="font-size:12px;">${detail}</td>
+            <td style="font-size:12px;color:var(--text-muted);">v${log.version}</td>
+          `;
+          tbody.appendChild(tr);
+        });
+      } catch (err) {
+        tbody.innerHTML = `<tr><td colspan="5" style="color:var(--danger);text-align:center;padding:20px;">通信エラー: ${escapeHtml(err.message)}</td></tr>`;
+      }
+    }
+
+    function changeOpLogPage(delta) {
+      opLogPage = Math.max(0, Math.min(opLogPage + delta, opLogTotalPages - 1));
+      loadOpLogs();
+    }
+
+    // ─── ログイン時表示プロジェクト設定（全ユーザー向け） ───────
+    async function loadLoginProjectSettings() {
+      try {
+        // 現在の設定を取得
+        const res  = await fetch('/WebGantt/api/projects.php?action=loginProject', { credentials: 'include' });
+        const data = await res.json();
+        const currentProjectId = data.project_id || '';
+
+        // セレクトボックスにプロジェクト一覧を反映
+        const sel = document.getElementById('loginProjectSelect');
+        sel.innerHTML = '<option value="">── ロビープロジェクト（デフォルト） ──</option>';
+        allProjects.forEach(p => {
+          const opt = document.createElement('option');
+          opt.value = p.project_id;
+          opt.textContent = `${p.name}（${p.project_id}）`;
+          if (p.project_id === currentProjectId) opt.selected = true;
+          sel.appendChild(opt);
+        });
+      } catch (err) {
+        console.warn('ログイン時表示プロジェクト設定の取得エラー:', err);
+      }
+    }
+
+    async function setLoginProject() {
+      const projectId = document.getElementById('loginProjectSelect').value;
+      showLoading(true);
+      try {
+        const res = await fetch('/WebGantt/api/projects.php?action=setLoginProject', {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ project_id: projectId }),
+        });
+        const data = await res.json();
+        if (data.error) {
+          showMessage('loginProjectMessage', data.error, 'error');
+        } else if (data.ok) {
+          if (projectId) {
+            showMessage('loginProjectMessage', `ログイン時の表示プロジェクトを設定しました`, 'success');
+          } else {
+            showMessage('loginProjectMessage', 'ログイン時の表示プロジェクトをリセットしました（ロビー使用）', 'success');
+          }
+          setTimeout(() => {
+            const el = document.getElementById('loginProjectMessage');
+            if (el) { el.className = 'message'; el.textContent = ''; }
+          }, 3000);
+        }
+      } catch (err) {
+        showMessage('loginProjectMessage', '通信エラー: ' + err.message, 'error');
+      }
+      showLoading(false);
+    }
+
+    // ─── ロビーID取得（全ユーザー向け） ─────────────────────
+    // プロジェクト一覧のロビーバッジ表示・削除制御に使用。
+    // 管理者用の loadLobbySettings とは別に、軽量にIDのみ取得する。
+    async function loadLobbyId() {
+      try {
+        const res = await fetch('/WebGantt/api/projects.php?action=lobby', { credentials: 'include' });
+        const data = await res.json();
+        currentLobbyId = data.lobby_project_id || '';
+        // プロジェクト一覧を再描画してバッジを反映
+        renderProjectTable(getFilteredProjects());
+      } catch (err) {
+        console.warn('ロビーID取得エラー:', err);
+      }
+    }
+
+    // ─── アナウンス送信カード（管理者用） Phase 5-7 ─────────────
+    // ---- 下書きキー ----
+    const ANNOUNCE_DRAFT_KEY = 'announceDraft_v1';
+
+    function initAnnounceCard() {
+      // プロジェクトセレクトにアクティブなPJ一覧を設定
+      const sel = document.getElementById('announceProjectSelect');
+      sel.innerHTML = '<option value="">── プロジェクトを選択 ──</option>';
+      (allProjects || []).forEach(p => {
+        const opt = document.createElement('option');
+        opt.value = p.project_id;
+        opt.textContent = p.name;
+        sel.appendChild(opt);
+      });
+      // 下書き復元
+      _announceRestoreDraft();
+    }
+
+    function onAnnounceTargetChange() {
+      const isProject = document.getElementById('announceTargetProject').checked;
+      document.getElementById('announceProjectSelect').style.display = isProject ? '' : 'none';
+      _announceSaveDraft();
+    }
+
+    // ---- タブ切替 ----
+    // ---- 文字カウンター ----
+    function _announceUpdateCharCount() {
+      const body = document.getElementById('announceBodyInput').value;
+      const len  = body.length;
+      const el   = document.getElementById('announceCharCount');
+      el.textContent = len + ' / 500';
+      el.style.color = len >= 480 ? 'var(--danger)' : len >= 450 ? 'var(--warning)' : 'var(--text-muted)';
+    }
+
+    // ---- oninput ハンドラ ----
+    function onAnnounceTitleInput() {
+      _announceSaveDraft();
+    }
+
+    function onAnnounceBodyInput() {
+      _announceSaveDraft();
+      _announceUpdateCharCount();
+    }
+
+    // ---- 下書き保存 ----
+    function _announceSaveDraft() {
+      try {
+        const draft = {
+          target:    document.querySelector('input[name="announceTarget"]:checked')?.value || 'all',
+          projectId: document.getElementById('announceProjectSelect')?.value || '',
+          title:     document.getElementById('announceTitleInput').value,
+          body:      document.getElementById('announceBodyInput').value,
+          ts:        Date.now()
+        };
+        if (!draft.title && !draft.body) {
+          localStorage.removeItem('announceDraft');
+          const ind = document.getElementById('announceDraftIndicator');
+          if (ind) ind.textContent = '';
+          return;
+        }
+        localStorage.setItem('announceDraft', JSON.stringify(draft));
+        const ind = document.getElementById('announceDraftIndicator');
+        if (ind) ind.textContent = '● 下書き保存済み';
+      } catch (e) { /* localStorage無効時は無視 */ }
+    }
+
+    // ---- 下書き復元 ----
+    function _announceRestoreDraft() {
+      try {
+        const raw = localStorage.getItem('announceDraft');
+        if (!raw) return;
+        const draft = JSON.parse(raw);
+        if (draft.target === 'project') {
+          const r = document.getElementById('announceTargetProject');
+          if (r) r.checked = true;
+          onAnnounceTargetChange();
+          if (draft.projectId) {
+            const sel = document.getElementById('announceProjectSelect');
+            if (sel) sel.value = draft.projectId;
+          }
+        }
+        if (draft.title) document.getElementById('announceTitleInput').value = draft.title;
+        if (draft.body)  document.getElementById('announceBodyInput').value  = draft.body;
+        _announceUpdateCharCount();
+        const ind = document.getElementById('announceDraftIndicator');
+        if (ind) ind.textContent = '● 下書き復元済み';
+      } catch (e) { /* ignore */ }
+    }
+
+    // ---- 下書き破棄 ----
+    function announceDiscardDraft() {
+      try { localStorage.removeItem('announceDraft'); } catch (e) {}
+      document.getElementById('announceTitleInput').value = '';
+      document.getElementById('announceBodyInput').value  = '';
+      _announceUpdateCharCount();
+      const ind = document.getElementById('announceDraftIndicator');
+      if (ind) ind.textContent = '';
+    }
+
+    async function sendAnnouncement() {
+      const target    = document.querySelector('input[name="announceTarget"]:checked').value;
+      const projectId = document.getElementById('announceProjectSelect').value;
+      const title     = document.getElementById('announceTitleInput').value.trim();
+      const body      = document.getElementById('announceBodyInput').value.trim();
+
+      // バリデーション
+      if (!title) {
+        showMessage('announceMessage', 'タイトルを入力してください。', 'error');
+        return;
+      }
+      if (target === 'project' && !projectId) {
+        showMessage('announceMessage', '送信先のプロジェクトを選択してください。', 'error');
+        return;
+      }
+      if (body.length > 500) {
+        showMessage('announceMessage', '本文は500文字以内で入力してください。', 'error');
+        return;
+      }
+
+      try {
+        const payload = { action: 'create_announcement', target, title, body };
+        if (target === 'project') payload.project_id = projectId;
+
+        const res  = await fetch('/WebGantt/api/notifications.php', {
+          method: 'POST', credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        const rawText = await res.text();
+        let data;
+        try { data = JSON.parse(rawText); }
+        catch (e) {
+          showMessage('announceMessage', `通信エラー: HTTP ${res.status} - JSON解析失敗。本文(先頭200字): ${rawText.substring(0, 200)}`, 'error');
+          return;
+        }
+        if (data.ok) {
+          showMessage('announceMessage', `✅ ${data.sent_count}件に送信しました。`, 'success');
+          // 送信後にフォームと下書きをクリア
+          document.getElementById('announceTitleInput').value = '';
+          document.getElementById('announceBodyInput').value  = '';
+          sessionStorage.removeItem(ANNOUNCE_DRAFT_KEY);
+          const ind = document.getElementById('announceDraftIndicator');
+          if (ind) ind.textContent = '';
+          _announceUpdateCharCount();
+        } else {
+          showMessage('announceMessage', 'エラー: ' + (data.error || '送信に失敗しました'), 'error');
+        }
+      } catch (err) {
+        showMessage('announceMessage', '通信エラー: ' + err.message, 'error');
+      }
+    }
+
+    // ─── ロビープロジェクト設定（管理者用） ───────────────────
+    async function loadLobbySettings() {
+      try {
+        // 現在のロビーIDを取得
+        const res  = await fetch('/WebGantt/api/projects.php?action=lobby', { credentials: 'include' });
+        const data = await res.json();
+        const lobbyId = data.lobby_project_id || '';
+
+        // グローバル変数に保存（プロジェクト一覧のバッジ表示に使用）
+        currentLobbyId = lobbyId;
+
+        // 現在のロビー名を表示
+        const current = allProjects.find(p => p.project_id === lobbyId);
+        const lobbyNameEl = document.getElementById('currentLobbyName');
+        lobbyNameEl.textContent = current
+          ? `${current.name}（${lobbyId}）`
+          : lobbyId || '未設定';
+
+        // セレクトボックスにプロジェクト一覧を反映
+        const sel = document.getElementById('lobbyProjectSelect');
+        sel.innerHTML = '<option value="">── プロジェクトを選択 ──</option>';
+        allProjects.forEach(p => {
+          const opt = document.createElement('option');
+          opt.value = p.project_id;
+          opt.textContent = `${p.name}（${p.project_id}）`;
+          if (p.project_id === lobbyId) opt.selected = true;
+          sel.appendChild(opt);
+        });
+
+        // プロジェクト一覧を再描画してロビーバッジを反映
+        renderProjectTable(getFilteredProjects());
+      } catch (err) {
+        document.getElementById('currentLobbyName').textContent = '取得エラー';
+      }
+    }
+
+    async function setLobbyProject() {
+      const projectId = document.getElementById('lobbyProjectSelect').value;
+      if (!projectId) {
+        showMessage('lobbyMessage', 'プロジェクトを選択してください', 'error');
+        return;
+      }
+      showLoading(true);
+      try {
+        const res  = await fetch('/WebGantt/api/projects.php?action=setLobby', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ project_id: projectId }),
+        });
+        const data = await res.json();
+        if (data.error) {
+          showMessage('lobbyMessage', data.error, 'error');
+        } else if (data.ok) {
+          showMessage('lobbyMessage', `ロビープロジェクトを「${projectId}」に変更しました`, 'success');
+          await loadLobbySettings(); // 表示を更新（currentLobbyId更新・一覧再描画も内部で行う）
+        }
+      } catch (err) {
+        showMessage('lobbyMessage', '通信エラー: ' + err.message, 'error');
+      }
+      showLoading(false);
+    }
+
+    function showLoading(show) {
+      const el = document.getElementById('loadingOverlay');
+      if (show) el.classList.add('visible');
+      else el.classList.remove('visible');
+    }
+
+
+    // ════════════════════════════════════════════════════════════
+    // ─── 切替メニュー設定（個人設定） ────────────────────────────
+    // ════════════════════════════════════════════════════════════
+
+    let switchMenuOrder = [];   // [{project_id, name, sort_order, is_visible, savedInDb}, ...]
+    let smDragSrc = null;
+    let smHasSavedData = false; // DBに保存済みデータがあるか
+
+    // ── 保存状態バッジ更新 ──────────────────────────────────
+    function updateSmSaveStatus(state) {
+      // state: 'saved' | 'unsaved' | 'default'
+      const el = document.getElementById('smSaveStatus');
+      if (!el) return;
+      if (state === 'saved') {
+        el.textContent = '✓ 保存済み';
+        el.style.display = '';
+        el.style.color = 'var(--success, #2e7d32)';
+        el.style.borderColor = 'var(--success, #2e7d32)';
+        el.style.background = 'rgba(46,125,50,0.07)';
+      } else if (state === 'unsaved') {
+        el.textContent = '● 未保存の変更あり';
+        el.style.display = '';
+        el.style.color = '#e67e22';
+        el.style.borderColor = '#e67e22';
+        el.style.background = 'rgba(230,126,34,0.07)';
+      } else {
+        // 'default': DBに設定なし→プロジェクト一覧順でそのまま表示中
+        el.textContent = '初期状態（未カスタマイズ）';
+        el.style.display = '';
+        el.style.color = '#1565c0';
+        el.style.borderColor = 'rgba(33,150,243,0.5)';
+        el.style.background = 'rgba(33,150,243,0.08)';
+        // 初期状態ノーティスを表示
+        const notice = document.getElementById('smInitNotice');
+        if (notice) notice.style.display = '';
+        return;
+      }
+      // 初期状態ノーティスを非表示（saved / unsaved の場合）
+      const notice = document.getElementById('smInitNotice');
+      if (notice) notice.style.display = 'none';
+    }
+
+    // ── 設定読み込み ──────────────────────────────────────────
+    async function loadSwitchMenuSettings() {
+      try {
+        const res  = await fetch('/WebGantt/api/projects.php?action=projectSettings', { credentials: 'include' });
+        const data = await res.json();
+        const saved = data.settings || {};  // {project_id: {sort_order, is_visible}}
+
+        // DBに1件でも保存済みデータがあるか判定
+        smHasSavedData = Object.keys(saved).length > 0;
+
+        // allProjects（プロジェクト一覧の順番が基準）に saved をマージ
+        // ・DBに設定がある → sort_order/is_visible をDBの値で上書き
+        // ・DBに設定がない → allProjects の現在の順番（index）・全表示をデフォルトとして使用
+        switchMenuOrder = allProjects.map((p, idx) => ({
+          project_id: p.project_id,
+          name:       p.name,
+          sort_order: saved[p.project_id] !== undefined ? saved[p.project_id].sort_order : idx,
+          is_visible: saved[p.project_id] !== undefined ? saved[p.project_id].is_visible : 1,
+          savedInDb:  saved[p.project_id] !== undefined,
+        }));
+
+        // sort_order で並び替え（同値の場合はallProjectsの元順序を維持）
+        switchMenuOrder.sort((a, b) => a.sort_order - b.sort_order);
+
+        // 保存状態バッジを設定
+        updateSmSaveStatus(smHasSavedData ? 'saved' : 'default');
+
+        renderSwitchMenuList();
+
+        // ────────────────────────────────────────────────────────
+        // 初回（DB未設定）の場合 → プロジェクト一覧順で自動保存
+        // これにより次回以降は「保存済み」として一貫した動作になる
+        // ────────────────────────────────────────────────────────
+        if (!smHasSavedData && switchMenuOrder.length > 0) {
+          await autoSaveInitialSwitchMenuSettings();
+        }
+      } catch (err) {
+        showMessage('switchMenuMessage', '設定読み込みエラー: ' + err.message, 'error');
+      }
+    }
+
+    // ── 初回自動保存（DB未設定時） ─────────────────────────────
+    async function autoSaveInitialSwitchMenuSettings() {
+      try {
+        // allProjects の現在の順番（updated_at 降順）をそのままDBに保存
+        const settings = switchMenuOrder.map((item, idx) => ({
+          project_id: item.project_id,
+          sort_order: idx,
+          is_visible: 1,
+        }));
+        const res = await fetch('/WebGantt/api/projects.php?action=saveProjectSettings', {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ settings }),
+        });
+        const data = await res.json();
+        if (data.ok) {
+          smHasSavedData = true;
+          // sort_order を確定
+          switchMenuOrder.forEach((item, idx) => {
+            item.sort_order = idx;
+            item.savedInDb  = true;
+          });
+          // バッジを「保存済み」に更新（初回自動保存は静かに完了）
+          updateSmSaveStatus('saved');
+          // 初期状態ノーティスを非表示
+          const notice = document.getElementById('smInitNotice');
+          if (notice) notice.style.display = 'none';
+        }
+      } catch (e) {
+        // 自動保存失敗は無視（次回ロード時に再試行される）
+        console.warn('自動保存失敗（初回設定）:', e);
+      }
+    }
+
+    // ── リスト描画 ────────────────────────────────────────────
+    function renderSwitchMenuList() {
+      const container = document.getElementById('switchMenuList');
+      container.innerHTML = '';
+
+      if (switchMenuOrder.length === 0) {
+        container.innerHTML = '<div style="color:var(--text-muted);font-size:13px;padding:8px 0;">所属しているプロジェクトがありません</div>';
+        return;
+      }
+
+      switchMenuOrder.forEach((item, idx) => {
+        const row = document.createElement('div');
+        row.className = 'sm-row' + (item.is_visible ? '' : ' sm-hidden');
+        row.draggable = true;
+        row.dataset.idx = idx;
+
+        const isLobby = (currentLobbyId && item.project_id === currentLobbyId);
+        const lobbyBadge = isLobby ? '<span class="sm-lobby-badge">🏠 ロビー</span>' : '';
+
+        row.innerHTML = `
+          <span class="sm-handle" title="ドラッグして並び替え">⠿</span>
+          <span class="sm-name">${escapeHtml(item.name)}${lobbyBadge ? '&nbsp;' + lobbyBadge : ''}</span>
+          <span style="font-size:11px;color:var(--text-muted);white-space:nowrap;">${escapeHtml(item.project_id)}</span>
+          <button class="sm-eye-btn" title="${item.is_visible ? '表示中（クリックで非表示）' : '非表示（クリックで表示）'}"
+            onclick="toggleSwitchVisible(${idx})">${item.is_visible ? '👁' : '🙈'}</button>
+        `;
+
+        // DnD イベント
+        row.addEventListener('dragstart', e => {
+          smDragSrc = idx;
+          row.classList.add('sm-dragging');
+          e.dataTransfer.effectAllowed = 'move';
+        });
+        row.addEventListener('dragend', () => {
+          row.classList.remove('sm-dragging');
+          container.querySelectorAll('.sm-row').forEach(r => r.classList.remove('sm-over'));
+        });
+        row.addEventListener('dragover', e => {
+          e.preventDefault();
+          if (smDragSrc !== null && smDragSrc !== idx) {
+            container.querySelectorAll('.sm-row').forEach(r => r.classList.remove('sm-over'));
+            row.classList.add('sm-over');
+          }
+        });
+        row.addEventListener('dragleave', () => row.classList.remove('sm-over'));
+        row.addEventListener('drop', e => {
+          e.preventDefault();
+          row.classList.remove('sm-over');
+          if (smDragSrc !== null && smDragSrc !== idx) {
+            const moved = switchMenuOrder.splice(smDragSrc, 1)[0];
+            switchMenuOrder.splice(idx, 0, moved);
+            smDragSrc = null;
+            // 変更を検知 → 未保存バッジに切り替え
+            updateSmSaveStatus('unsaved');
+            renderSwitchMenuList();
+          }
+        });
+
+        container.appendChild(row);
+      });
+    }
+
+    // ── 表示/非表示トグル ─────────────────────────────────────
+    function toggleSwitchVisible(idx) {
+      switchMenuOrder[idx].is_visible = switchMenuOrder[idx].is_visible ? 0 : 1;
+      // 変更を検知 → 未保存バッジに切り替え
+      updateSmSaveStatus('unsaved');
+      renderSwitchMenuList();
+    }
+
+    // ── 設定保存 ──────────────────────────────────────────────
+    async function saveSwitchMenuSettings() {
+      showLoading(true);
+      try {
+        const settings = switchMenuOrder.map((item, idx) => ({
+          project_id: item.project_id,
+          sort_order: idx,
+          is_visible: item.is_visible,
+        }));
+
+        const res  = await fetch('/WebGantt/api/projects.php?action=saveProjectSettings', {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body:    JSON.stringify({ settings }),
+        });
+        const data = await res.json();
+        if (data.error) {
+          showMessage('switchMenuMessage', data.error, 'error');
+        } else {
+          // 保存成功
+          smHasSavedData = true;
+          switchMenuOrder.forEach((item, idx) => {
+            item.sort_order = idx;
+            item.savedInDb  = true;
+          });
+          updateSmSaveStatus('saved');
+          showMessage('switchMenuMessage', '設定を保存しました', 'success');
+          // メッセージは3秒後に消す
+          setTimeout(() => {
+            const el = document.getElementById('switchMenuMessage');
+            if (el && el.textContent === '設定を保存しました') {
+              el.className = 'message';
+              el.textContent = '';
+            }
+          }, 3000);
+        }
+      } catch (err) {
+        showMessage('switchMenuMessage', '通信エラー: ' + err.message, 'error');
+      }
+      showLoading(false);
+    }
+
+    // ── デフォルトに戻す（プロジェクト一覧順・全表示） ──────────
+    async function resetSwitchMenuSettings() {
+      if (!confirm('切替メニューの設定をデフォルトに戻しますか？\n（プロジェクト一覧と同じ順番・全プロジェクト表示になります）')) return;
+      showLoading(true);
+      try {
+        // allProjects の現在の順番で sort_order を振り直し・全表示で保存
+        const settings = allProjects.map((p, idx) => ({
+          project_id: p.project_id,
+          sort_order: idx,
+          is_visible: 1,
+        }));
+        const res  = await fetch('/WebGantt/api/projects.php?action=saveProjectSettings', {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body:    JSON.stringify({ settings }),
+        });
+        const data = await res.json();
+        if (data.ok) {
+          await loadProjectList();
+          await loadSwitchMenuSettings();
+          showMessage('switchMenuMessage', 'デフォルトに戻しました', 'success');
+          setTimeout(() => {
+            const el = document.getElementById('switchMenuMessage');
+            if (el && el.textContent === 'デフォルトに戻しました') {
+              el.className = 'message';
+              el.textContent = '';
+            }
+          }, 3000);
+        }
+      } catch (err) {
+        showMessage('switchMenuMessage', '通信エラー: ' + err.message, 'error');
+      }
+      showLoading(false);
+    }
+
+
+    // ─── 通知設定モーダル (Phase 5-5) ─────────────────────
+    let currentNotifProjectId = null;
+
+    function openNotifModal(projectId, projectName) {
+      currentNotifProjectId = projectId;
+      document.getElementById('notifModalTitle').textContent = '通知設定 — ' + projectName + ' (' + projectId + ')';
+      document.getElementById('notifMessage').className = 'message';
+      document.getElementById('notifMessage').textContent = '';
+      // チェックボックスを一旦リセット
+      document.getElementById('notifSettingDelayAlert').checked = true;
+      document.getElementById('notifSettingTaskAssign').checked = true;
+      document.getElementById('notifSettingMention').checked = true;
+      document.getElementById('notifSettingEmailAlert').checked = false;
+      document.getElementById('notifSettingAdvanceDays').value = '3';
+      document.getElementById('notifSettingStartAdvanceDays').value = '3';
+      document.getElementById('notifSettingEndAdvanceEnabled').checked = true;
+      document.getElementById('notifSettingStartAdvanceEnabled').checked = true;
+      document.getElementById('notifSettingAssigneeOnly').checked = true;
+      toggleAdvanceDaysInput('end');
+      toggleAdvanceDaysInput('start');
+      // モーダル表示
+      document.getElementById('notifModalOverlay').classList.add('visible');
+      // 設定を読み込み
+      loadNotifSettings(projectId);
+    }
+
+    function closeNotifModal() {
+      document.getElementById('notifModalOverlay').classList.remove('visible');
+      currentNotifProjectId = null;
+    }
+
+    // Phase 5-6: 予告トグルと日数入力の連動制御
+    function toggleAdvanceDaysInput(which) {
+      if (which === 'start') {
+        const enabled = document.getElementById('notifSettingStartAdvanceEnabled').checked;
+        const input = document.getElementById('notifSettingStartAdvanceDays');
+        input.disabled = !enabled;
+        input.style.opacity = enabled ? '1' : '0.4';
+      } else if (which === 'end') {
+        const enabled = document.getElementById('notifSettingEndAdvanceEnabled').checked;
+        const input = document.getElementById('notifSettingAdvanceDays');
+        input.disabled = !enabled;
+        input.style.opacity = enabled ? '1' : '0.4';
+      }
+    }
+
+    async function loadNotifSettings(projectId) {
+      try {
+        const res = await fetch('/WebGantt/api/notifications.php?action=get_notification_settings&project=' + encodeURIComponent(projectId), {
+          credentials: 'include'
+        });
+        const data = await res.json();
+        if (data.ok && data.settings) {
+          document.getElementById('notifSettingDelayAlert').checked = !!data.settings.notify_delay_alert;
+          document.getElementById('notifSettingTaskAssign').checked = !!data.settings.notify_task_assign;
+          document.getElementById('notifSettingMention').checked = !!data.settings.notify_mention;
+          document.getElementById('notifSettingEmailAlert').checked = !!data.settings.email_alert_enabled;
+          if (data.settings.notify_advance_days !== undefined) {
+            document.getElementById('notifSettingAdvanceDays').value = String(data.settings.notify_advance_days);
+          }
+          if (data.settings.notify_start_advance_days !== undefined) {
+            document.getElementById('notifSettingStartAdvanceDays').value = String(data.settings.notify_start_advance_days);
+          }
+          if (data.settings.notify_end_advance_enabled !== undefined) {
+            document.getElementById('notifSettingEndAdvanceEnabled').checked = !!data.settings.notify_end_advance_enabled;
+            toggleAdvanceDaysInput('end');
+          }
+          if (data.settings.notify_start_advance_enabled !== undefined) {
+            document.getElementById('notifSettingStartAdvanceEnabled').checked = !!data.settings.notify_start_advance_enabled;
+            toggleAdvanceDaysInput('start');
+          }
+          if (data.settings.notify_assignee_only !== undefined) {
+            document.getElementById('notifSettingAssigneeOnly').checked = !!data.settings.notify_assignee_only;
+          }
+        }
+      } catch (err) {
+        showMessage('notifMessage', '設定の読み込みに失敗しました: ' + err.message, 'error');
+      }
+    }
+
+    async function saveNotifSettings() {
+      if (!currentNotifProjectId) return;
+      const payload = {
+        action: 'update_notification_settings',
+        project_id: currentNotifProjectId,
+        notify_delay_alert: document.getElementById('notifSettingDelayAlert').checked ? 1 : 0,
+        notify_task_assign: document.getElementById('notifSettingTaskAssign').checked ? 1 : 0,
+        notify_mention: document.getElementById('notifSettingMention').checked ? 1 : 0,
+        email_alert_enabled: document.getElementById('notifSettingEmailAlert').checked ? 1 : 0,
+        notify_advance_days: Math.max(0, Math.min(30, parseInt(document.getElementById('notifSettingAdvanceDays').value, 10) || 0)),
+        notify_start_advance_days: Math.max(0, Math.min(30, parseInt(document.getElementById('notifSettingStartAdvanceDays').value, 10) || 0)),
+        notify_end_advance_enabled: document.getElementById('notifSettingEndAdvanceEnabled').checked ? 1 : 0,
+        notify_start_advance_enabled: document.getElementById('notifSettingStartAdvanceEnabled').checked ? 1 : 0,
+        notify_assignee_only: document.getElementById('notifSettingAssigneeOnly').checked ? 1 : 0,
+      };
+      try {
+        const res = await fetch('/WebGantt/api/notifications.php', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (data.ok) {
+          showMessage('notifMessage', '保存しました', 'success');
+          setTimeout(function() {
+            var el = document.getElementById('notifMessage');
+            if (el && el.textContent === '保存しました') {
+              el.className = 'message';
+              el.textContent = '';
+            }
+          }, 2500);
+        } else {
+          showMessage('notifMessage', data.error || '保存に失敗しました', 'error');
+        }
+      } catch (err) {
+        showMessage('notifMessage', '通信エラー: ' + err.message, 'error');
+      }
+    }
+
+    // 通知設定モーダル外クリックで閉じる
+    document.getElementById('notifModalOverlay').addEventListener('click', function(e) {
+      if (e.target === this) closeNotifModal();
+    });
+
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+  </script>
+<script type="module" src="https://static.cloudflareinsights.com/beacon.min.js/v4513226cdae34746b4dedf0b4dfa099e1781791509496" integrity="sha512-ZE9pZaUXND66v380QUtch/5sE9tPFh2zg45pR2PB0CVkCtOREv2AJKkSidISWkysEuQ0EH8faUU5du78bx87UQ==" data-cf-beacon='{"version":"2024.11.0","token":"4edd5f8ec12a48cfa682ab8261b80a79"}' crossorigin="anonymous"></script>
+</body>
+</html>

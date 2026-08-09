@@ -1,0 +1,898 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <!-- ============================================================
+       [Phase A] アプリ基準パスの外出し
+       - APP_BASE をデプロイ環境ごとに書き換えるだけで、
+         全ページの静的リンク・fetch のベースが切り替わる。
+       - 既存の絶対パス "/WebGantt/..." は影響を受けず、そのまま動く。
+       ============================================================ -->
+  <script>window.__APP_BASE__ = '/WebGantt/';</script>
+  <base href="/WebGantt/">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ガントチャート - アカウント管理</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    :root {
+      --bg-app: #f7f8fa;
+      --bg-surface: #ffffff;
+      --bg-subtle: #fafbfc;
+      --bg-hover: #fafcff;
+      --text-main: #2f3441;
+      --text-sub: #5f6775;
+      --text-muted: #8a93a3;
+      --line-strong: #dce2e8;
+      --line-mid: #e7ebf0;
+      --line-weak: #e8edf3;
+      --primary: #3457d5;
+      --primary-hover: #2b61e0;
+      --primary-soft: #eaf2ff;
+      --danger: #dc2626;
+      --danger-hover: #b91c1c;
+      --danger-soft: #fef2f2;
+      --success: #16a34a;
+      --success-soft: #f0fdf4;
+      --warn: #f0b24a;
+      --warn-soft: #fffbeb;
+      --shadow: 0 10px 30px rgba(31, 41, 55, 0.08);
+      --shadow-sm: 0 2px 8px rgba(31, 41, 55, 0.06);
+      --radius: 8px;
+    }
+    body {
+      font-family: 'Segoe UI', 'Hiragino Sans', sans-serif;
+      background: var(--bg-app);
+      color: var(--text-main);
+      min-height: 100vh;
+      padding: 20px;
+    }
+    .container {
+      max-width: 900px;
+      margin: 0 auto;
+    }
+
+    /* ─── ヘッダー ─────────────────────────────────────── */
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 24px;
+      padding: 16px 24px;
+      background: var(--bg-surface);
+      border: 1px solid var(--line-mid);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow-sm);
+    }
+    .header h1 {
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--text-main);
+    }
+    .header .back-link {
+      color: var(--primary);
+      text-decoration: none;
+      font-size: 13px;
+    }
+    .header .back-link:hover { text-decoration: underline; }
+
+    /* ─── カード ───────────────────────────────────────── */
+    .card {
+      background: var(--bg-surface);
+      border: 1px solid var(--line-mid);
+      border-radius: var(--radius);
+      padding: 24px;
+      margin-bottom: 20px;
+      box-shadow: var(--shadow-sm);
+    }
+    .card h2 {
+      font-size: 16px;
+      color: var(--text-main);
+      margin-bottom: 16px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid var(--line-weak);
+      font-weight: 700;
+    }
+    .card h2 .badge {
+      font-size: 11px;
+      background: var(--warn-soft);
+      color: #92400e;
+      padding: 2px 8px;
+      border-radius: 4px;
+      margin-left: 8px;
+      vertical-align: middle;
+      font-weight: 600;
+    }
+
+    /* ─── フォーム ─────────────────────────────────────── */
+    .form-group { margin-bottom: 16px; }
+    .form-group label {
+      display: block;
+      font-size: 13px;
+      color: var(--text-sub);
+      margin-bottom: 6px;
+      font-weight: 600;
+    }
+    .form-group input, .form-group select {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1px solid var(--line-strong);
+      border-radius: 6px;
+      font-size: 14px;
+      color: var(--text-main);
+      background: var(--bg-surface);
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    .form-group input:focus, .form-group select:focus {
+      outline: none;
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px rgba(52, 87, 213, 0.10);
+    }
+    .form-group input:disabled {
+      background: var(--bg-subtle);
+      color: var(--text-muted);
+    }
+    .form-group .hint {
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-top: 4px;
+    }
+
+    /* ─── ボタン ───────────────────────────────────────── */
+    .btn {
+      padding: 10px 24px;
+      border: none;
+      border-radius: 6px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .btn-primary { background: var(--primary); color: #fff; }
+    .btn-primary:hover { background: var(--primary-hover); }
+    .btn-primary:disabled { background: var(--text-muted); cursor: not-allowed; }
+    .btn-danger { background: var(--danger); color: #fff; }
+    .btn-danger:hover { background: var(--danger-hover); }
+    .btn-danger:disabled { background: var(--text-muted); cursor: not-allowed; }
+    .btn-secondary {
+      background: var(--bg-subtle);
+      color: var(--text-sub);
+      border: 1px solid var(--line-strong);
+    }
+    .btn-secondary:hover { background: var(--line-weak); }
+    .btn-small { padding: 6px 14px; font-size: 12px; }
+    .btn-row { display: flex; gap: 12px; margin-top: 8px; }
+
+    /* ─── メッセージ ───────────────────────────────────── */
+    .message {
+      font-size: 13px;
+      margin-top: 12px;
+      min-height: 18px;
+      padding: 8px 12px;
+      border-radius: 4px;
+      display: none;
+    }
+    .message.success { display: block; background: var(--success-soft); color: var(--success); }
+    .message.error { display: block; background: var(--danger-soft); color: var(--danger); }
+    .message.info { display: block; background: var(--primary-soft); color: var(--primary); }
+
+    /* ─── ユーザー一覧テーブル ─────────────────────────── */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+    table th, table td {
+      padding: 10px 12px;
+      text-align: left;
+      border-bottom: 1px solid var(--line-weak);
+    }
+    table th {
+      background: var(--bg-subtle);
+      font-weight: 600;
+      color: var(--text-sub);
+      white-space: nowrap;
+    }
+    table tr:hover { background: var(--bg-hover); }
+    table tr.editing { background: var(--primary-soft); }
+    table tr.editing:hover { background: var(--primary-soft); }
+    table td input, table td select {
+      padding: 6px 8px;
+      border: 1px solid var(--primary);
+      border-radius: 4px;
+      font-size: 13px;
+      width: 100%;
+      color: var(--text-main);
+    }
+    table td input:focus, table td select:focus {
+      outline: none;
+      box-shadow: 0 0 0 2px rgba(52, 87, 213, 0.10);
+    }
+    table td .cell-actions {
+      display: flex;
+      gap: 6px;
+      white-space: nowrap;
+    }
+    .role-badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+    .role-admin { background: var(--warn-soft); color: #92400e; }
+    .role-user { background: var(--primary-soft); color: var(--primary); }
+    .self-badge {
+      display: inline-block;
+      padding: 1px 6px;
+      border-radius: 3px;
+      font-size: 10px;
+      background: var(--success-soft);
+      color: var(--success);
+      margin-left: 4px;
+    }
+
+    .admin-only { display: none; }
+    .admin-only.visible { display: block; }
+
+    /* ─── ローディング ─────────────────────────────────── */
+    .loading-overlay {
+      display: none;
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(247, 248, 250, 0.8);
+      z-index: 9999;
+      align-items: center;
+      justify-content: center;
+    }
+    .loading-overlay.visible { display: flex; }
+    .spinner {
+      width: 32px; height: 32px;
+      border: 4px solid var(--line-mid);
+      border-top-color: var(--primary);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .current-user-info {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      color: var(--text-sub);
+    }
+    .current-user-info .dot {
+      width: 10px; height: 10px;
+      border-radius: 50%;
+      display: inline-block;
+    }
+
+    /* ─── 検索ボックス ─────────────────────────────────── */
+    .search-bar { margin-bottom: 12px; }
+    .search-bar input {
+      width: 100%;
+      padding: 8px 12px;
+      border: 1px solid var(--line-strong);
+      border-radius: 6px;
+      font-size: 13px;
+      color: var(--text-main);
+      background: var(--bg-surface);
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    .search-bar input:focus {
+      outline: none;
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px rgba(52, 87, 213, 0.10);
+    }
+    .user-count {
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-bottom: 8px;
+    }
+  </style>
+</head>
+<body>
+  <div class="loading-overlay" id="loadingOverlay"><div class="spinner"></div></div>
+
+  <div class="container">
+
+    <!-- ヘッダー -->
+    <div class="header">
+      <h1>アカウント管理</h1>
+      <div style="display:flex; align-items:center; gap:16px;">
+        <div class="current-user-info" id="currentUserInfo"></div>
+        <a href="/WebGantt/gantt/gantt-collab.html" class="back-link" id="backToGanttLink">← ガントチャートへ戻る</a>
+      </div>
+    </div>
+
+    <!-- アカウント設定(パスワード変更 + メールアドレス登録・Phase 5-8) -->
+    <div class="card">
+      <h2>アカウント設定</h2>
+
+      <!-- ── パスワード変更(既存・そのまま) ── -->
+      <h3 style="font-size:14px; margin-bottom:12px; color:var(--text-sub);">パスワード変更</h3>
+      <div class="form-group">
+        <label>現在のパスワード</label>
+        <input type="password" id="oldPassword" autocomplete="current-password">
+      </div>
+      <div class="form-group">
+        <label>新しいパスワード</label>
+        <input type="password" id="newPassword" autocomplete="new-password">
+        <div class="hint">6文字以上で入力してください</div>
+      </div>
+      <div class="form-group">
+        <label>新しいパスワード（確認）</label>
+        <input type="password" id="newPasswordConfirm" autocomplete="new-password">
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-primary" onclick="changePassword()">パスワードを変更</button>
+      </div>
+      <div class="message" id="pwMessage"></div>
+
+      <!-- ── 通知メールアドレス登録(Phase 5-8 新規) ── -->
+      <hr style="border:none; border-top:1px solid var(--line-weak); margin:24px 0;">
+      <h3 style="font-size:14px; margin-bottom:12px; color:var(--text-sub);">通知メールアドレス</h3>
+      <div class="form-group">
+        <label>メールアドレス</label>
+        <input type="email" id="myEmail" autocomplete="email" placeholder="notify@example.com">
+        <div class="hint">遅延アラートのdigestメール送信先。未設定の場合はメール通知が送信されません。</div>
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-primary" onclick="updateMyEmail()">メールアドレスを保存</button>
+      </div>
+      <div class="message" id="emailMessage"></div>
+    </div>
+
+
+
+    <!-- ユーザー登録（管理者のみ） -->
+    <div class="card admin-only" id="registerCard">
+      <h2>ユーザー登録 <span class="badge">管理者のみ</span></h2>
+      <div class="form-group">
+        <label>ユーザー名（ログインID）</label>
+        <input type="text" id="regUsername">
+        <div class="hint">3〜32文字の英数字・ハイフン・アンダースコア</div>
+      </div>
+      <div class="form-group">
+        <label>表示名</label>
+        <input type="text" id="regDisplayName">
+        <div class="hint">プレゼンス表示用の名前</div>
+      </div>
+      <div class="form-group">
+        <label>メールアドレス(任意)</label>
+        <input type="email" id="regEmail" placeholder="notify@example.com">
+        <div class="hint">未入力でも登録可。後でユーザー自身が設定可能</div>
+      </div>
+      <div class="form-group">
+        <label>パスワード</label>
+        <input type="password" id="regPassword">
+        <div class="hint">6文字以上</div>
+      </div>
+      <div class="form-group">
+        <label>権限</label>
+        <select id="regRole">
+          <option value="user">ユーザー</option>
+          <option value="admin">管理者</option>
+        </select>
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-primary" onclick="registerUser()">ユーザーを登録</button>
+      </div>
+      <div class="message" id="regMessage"></div>
+    </div>
+
+    <!-- ユーザー一覧・編集（管理者のみ） -->
+    <div class="card admin-only" id="userListCard">
+      <h2>ユーザー一覧・編集 <span class="badge">管理者のみ</span></h2>
+
+      <div class="search-bar">
+        <input type="text" id="userSearch" placeholder="ユーザー名・表示名で検索" oninput="filterUsers()">
+      </div>
+      <div class="user-count" id="userCount"></div>
+
+      <table id="userTable">
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>ユーザー名</th>
+            <th>表示名</th>
+            <th>メール</th>
+            <th>権限</th>
+            <th>作成日</th>
+            <th>操作</th>
+          </tr>
+        </thead>
+        <tbody id="userTableBody"></tbody>
+      </table>
+      <!-- ユーザー一覧 ページネーションバー -->
+      <div id="userPagination" style="display:none; align-items:center; justify-content:space-between; margin-top:8px; padding:4px 0;">
+        <button class="btn btn-secondary btn-small" id="userPagePrev" onclick="changeUserPage(-1)">&lsaquo; 前へ</button>
+        <span id="userPageInfo" style="font-size:12px; color:var(--text-muted);"></span>
+        <button class="btn btn-secondary btn-small" id="userPageNext" onclick="changeUserPage(1)">次へ &rsaquo;</button>
+      </div>
+      <div class="message" id="userListMessage"></div>
+    </div>
+
+  </div>
+
+  <!-- パスワード再設定モーダル -->
+  <div class="modal-overlay" id="resetPwModalOverlay" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.4);z-index:1000;align-items:center;justify-content:center;">
+    <div style="background:var(--bg-surface);border-radius:8px;padding:28px;width:380px;max-width:90vw;box-shadow:0 10px 30px rgba(0,0,0,0.15);">
+      <h3 style="margin:0 0 6px 0;">パスワード再設定</h3>
+      <p style="font-size:13px;color:var(--text-sub);margin-bottom:18px;">
+        対象ユーザー: <strong id="resetPwTargetName" style="color:var(--primary);"></strong><br>
+        <span style="font-size:12px;color:var(--text-muted);">※再設定後、対象ユーザーのセッションは無効化され、再ログインが必要になります</span>
+      </p>
+      <div class="form-group">
+        <label>新しいパスワード</label>
+        <input type="password" id="resetPwNewPassword" autocomplete="new-password" style="width:100%;padding:10px 12px;border:1px solid var(--line-strong);border-radius:6px;font-size:14px;">
+      </div>
+      <div class="form-group">
+        <label>新しいパスワード（確認）</label>
+        <input type="password" id="resetPwConfirmPassword" autocomplete="new-password" style="width:100%;padding:10px 12px;border:1px solid var(--line-strong);border-radius:6px;font-size:14px;">
+      </div>
+      <div class="message" id="resetPwMessage" style="margin-bottom:12px;"></div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;">
+        <button class="btn btn-secondary" onclick="closeResetPwModal()">キャンセル</button>
+        <button class="btn btn-primary" onclick="executeResetPw()">パスワードを再設定</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let currentUser = null;
+    let allUsers = [];
+    let editingId = null;
+    let userPage = 0;            // ユーザー一覧の現在ページ（0オリジン）
+    const USERS_PER_PAGE = 10;    // 1ページの表示件数
+
+    (async function init() {
+      try {
+        const res = await fetch('/WebGantt/api/auth.php?action=me', { credentials: 'include' });
+        const data = await res.json();
+        if (!data.authenticated) {
+          window.location.href = '/WebGantt/login.html?redirect=' + encodeURIComponent(window.location.pathname);
+          return;
+        }
+        currentUser = data.user;
+        showUserInfo();
+        // Phase 5-8: 自分の email フィールドに現在値をセット
+        if (currentUser.email) {
+          const emailInput = document.getElementById('myEmail');
+          if (emailInput) emailInput.value = currentUser.email;
+        }
+      // 「ガントチャートへ戻る」リンクに直前のプロジェクトIDを付与
+      try {
+        const lastProject = sessionStorage.getItem('gantt_last_project');
+        const backLink = document.getElementById('backToGanttLink');
+        if (backLink && lastProject) {
+          backLink.href = '/WebGantt/gantt/gantt-collab.html?project=' + encodeURIComponent(lastProject);
+        }
+      } catch (e) {}
+        if (currentUser.role === 'admin') {
+          document.querySelectorAll('.admin-only').forEach(el => el.classList.add('visible'));
+          await loadUserList();
+        }
+      } catch (err) {
+        showMessage('pwMessage', '初期化エラー: ' + err.message, 'error');
+      }
+    })();
+
+    function showUserInfo() {
+      const el = document.getElementById('currentUserInfo');
+      if (!currentUser) return;
+      const roleText = currentUser.role === 'admin' ? '管理者' : 'ユーザー';
+      el.innerHTML = `<span class="dot" style="background:var(--success)"></span>${currentUser.displayName} (${roleText})`;
+    }
+
+    async function changePassword() {
+      const oldPass = document.getElementById('oldPassword').value;
+      const newPass = document.getElementById('newPassword').value;
+      const newConfirm = document.getElementById('newPasswordConfirm').value;
+      if (!oldPass || !newPass || !newConfirm) {
+        showMessage('pwMessage', '全ての項目を入力してください', 'error');
+        return;
+      }
+      if (newPass.length < 6) {
+        showMessage('pwMessage', '新しいパスワードは6文字以上必要です', 'error');
+        return;
+      }
+      if (newPass !== newConfirm) {
+        showMessage('pwMessage', '新しいパスワードと確認が一致しません', 'error');
+        return;
+      }
+      if (newPass === oldPass) {
+        showMessage('pwMessage', '現在のパスワードと同じパスワードは設定できません', 'error');
+        return;
+      }
+      showLoading(true);
+      try {
+        const res = await fetch('/WebGantt/api/auth.php?action=changepw', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ oldPassword: oldPass, newPassword: newPass }),
+        });
+        const data = await res.json();
+        if (data.error) {
+          showMessage('pwMessage', data.error, 'error');
+        } else if (data.ok) {
+          showMessage('pwMessage', 'パスワードを変更しました', 'success');
+          document.getElementById('oldPassword').value = '';
+          document.getElementById('newPassword').value = '';
+          document.getElementById('newPasswordConfirm').value = '';
+        }
+      } catch (err) {
+        showMessage('pwMessage', '通信エラー: ' + err.message, 'error');
+      }
+      showLoading(false);
+    }
+
+    // ─── 通知メールアドレス登録・変更(Phase 5-8) ──────────
+    async function updateMyEmail() {
+      const email = document.getElementById('myEmail').value.trim();
+      const msgEl = document.getElementById('emailMessage');
+
+      // 空文字は登録解除として許可。入力された場合は軽い形式チェック
+      if (email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+        showMessage('emailMessage', 'メールアドレスの形式が正しくありません', 'error');
+        return;
+      }
+
+      showLoading(true);
+      try {
+        const res = await fetch('/WebGantt/api/auth.php?action=update_email', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ email }),
+        });
+        const data = await res.json();
+        if (data.error) {
+          showMessage('emailMessage', data.error, 'error');
+        } else if (data.ok) {
+          showMessage('emailMessage',
+            email ? 'メールアドレスを保存しました' : 'メールアドレスの登録を解除しました',
+            'success');
+          // currentUser の email も更新
+          if (currentUser) currentUser.email = email || null;
+        }
+      } catch (err) {
+        showMessage('emailMessage', '通信エラー: ' + err.message, 'error');
+      }
+      showLoading(false);
+    }
+
+    async function loadUserList() {
+      try {
+        const res = await fetch('/WebGantt/api/auth.php?action=list', { credentials: 'include' });
+        const data = await res.json();
+        if (data.error) {
+          showMessage('userListMessage', data.error, 'error');
+          return;
+        }
+        allUsers = data.users || [];
+        renderUserTable(allUsers);
+      } catch (err) {
+        showMessage('userListMessage', '一覧取得エラー: ' + err.message, 'error');
+      }
+    }
+
+    function renderUserTable(users) {
+      const tbody   = document.getElementById('userTableBody');
+      const countEl = document.getElementById('userCount');
+      const pagBar  = document.getElementById('userPagination');
+      const prevBtn = document.getElementById('userPagePrev');
+      const nextBtn = document.getElementById('userPageNext');
+      const info    = document.getElementById('userPageInfo');
+      tbody.innerHTML = '';
+
+      const total      = users.length;
+      const totalPages = Math.ceil(total / USERS_PER_PAGE);
+
+      // ページ番号が範囲外なら先頭に戻す
+      if (userPage >= totalPages) userPage = Math.max(0, totalPages - 1);
+
+      // 件数表示
+      if (totalPages > 1) {
+        countEl.textContent = `${total}人のユーザー（${userPage + 1} / ${totalPages}ページ）`;
+      } else {
+        countEl.textContent = `${total}人のユーザー`;
+      }
+
+      // ページネーションバー表示制御
+      if (totalPages > 1) {
+        pagBar.style.display = 'flex';
+        info.textContent     = `${userPage + 1} / ${totalPages} ページ（全${total}人）`;
+        prevBtn.disabled     = userPage === 0;
+        nextBtn.disabled     = userPage >= totalPages - 1;
+      } else {
+        pagBar.style.display = 'none';
+      }
+
+      // 現在ページ分にスライス
+      const start     = userPage * USERS_PER_PAGE;
+      const pageItems = users.slice(start, start + USERS_PER_PAGE);
+
+      pageItems.forEach(u => {
+        const tr = document.createElement('tr');
+        tr.id = `user-row-${u.id}`;
+        if (editingId === u.id) {
+          tr.classList.add('editing');
+          const isSelf = u.id === currentUser.id;
+          const roleOptions = `
+            <select id="edit-role-${u.id}">
+              <option value="user" ${u.role === 'user' ? 'selected' : ''}>ユーザー</option>
+              <option value="admin" ${u.role === 'admin' ? 'selected' : ''}>管理者</option>
+            </select>
+          `;
+          tr.innerHTML = `
+            <td>${u.id}${isSelf ? '<span class="self-badge">自分</span>' : ''}</td>
+            <td><input type="text" id="edit-username-${u.id}" value="${escapeHtml(u.username)}"></td>
+            <td><input type="text" id="edit-displayname-${u.id}" value="${escapeHtml(u.display_name)}"></td>
+            <td><input type="email" id="edit-email-${u.id}" value="${escapeHtml(u.email || '')}" placeholder="notify@example.com"></td>
+            <td>${roleOptions}</td>
+            <td>${new Date(u.created_at).toLocaleDateString('ja-JP')}</td>
+            <td>
+              <div class="cell-actions">
+                <button class="btn btn-primary btn-small" onclick="saveEdit(${u.id})">保存</button>
+                <button class="btn btn-secondary btn-small" onclick="cancelEdit()">キャンセル</button>
+              </div>
+            </td>
+          `;
+        } else {
+          const roleBadge = u.role === 'admin'
+            ? '<span class="role-badge role-admin">管理者</span>'
+            : '<span class="role-badge role-user">ユーザー</span>';
+          const isSelf = u.id === currentUser.id;
+          const selfBadge = isSelf ? '<span class="self-badge">自分</span>' : '';
+          const canDelete = !isSelf;
+          const deleteBtn = canDelete
+            ? `<button class="btn btn-danger btn-small" onclick="deleteUser(${u.id}, '${escapeHtml(u.username)}')">削除</button>`
+            : '';
+          const editBtn = `<button class="btn btn-primary btn-small" onclick="startEdit(${u.id})">編集</button>`;
+          const resetPwBtn = `<button class="btn btn-secondary btn-small" onclick="openResetPwModal(${u.id}, '${escapeHtml(u.username)}', '${escapeHtml(u.display_name)}')">PW再設定</button>`;
+          const emailCell = u.email
+            ? escapeHtml(u.email)
+            : '<span style="color:var(--text-muted);">未設定</span>';
+          tr.innerHTML = `
+            <td>${u.id}${selfBadge}</td>
+            <td>${escapeHtml(u.username)}</td>
+            <td>${escapeHtml(u.display_name)}</td>
+            <td>${emailCell}</td>
+            <td>${roleBadge}</td>
+            <td>${new Date(u.created_at).toLocaleDateString('ja-JP')}</td>
+            <td><div class="cell-actions">${editBtn} ${resetPwBtn} ${deleteBtn}</div></td>
+          `;
+        }
+        tbody.appendChild(tr);
+      });
+    }
+
+    function startEdit(id) {
+      editingId = id;
+      renderUserTable(getFilteredUsers());
+      setTimeout(() => {
+        const el = document.getElementById(`edit-username-${id}`);
+        if (el) el.focus();
+      }, 50);
+    }
+
+    function cancelEdit() {
+      editingId = null;
+      renderUserTable(getFilteredUsers());
+    }
+
+    async function saveEdit(id) {
+      const username    = document.getElementById(`edit-username-${id}`).value.trim();
+      const displayName = document.getElementById(`edit-displayname-${id}`).value.trim();
+      const email       = document.getElementById(`edit-email-${id}`).value.trim();
+      const role        = document.getElementById(`edit-role-${id}`).value;
+      if (!username || !displayName) {
+        showMessage('userListMessage', 'ユーザー名と表示名は必須です', 'error');
+        return;
+      }
+      if (!preg_match_username(username)) {
+        showMessage('userListMessage', 'ユーザー名は3〜32文字の英数字・ハイフン・アンダースコアのみ使用可能です', 'error');
+        return;
+      }
+      showLoading(true);
+      try {
+        const res = await fetch('/WebGantt/api/auth.php?action=update', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ id, username, displayName, email, role }),
+        });
+        const data = await res.json();
+        if (data.error) {
+          showMessage('userListMessage', data.error, 'error');
+        } else if (data.ok) {
+          showMessage('userListMessage', `ユーザー「${displayName}」を更新しました`, 'success');
+          editingId = null;
+          await loadUserList();
+        }
+      } catch (err) {
+        showMessage('userListMessage', '通信エラー: ' + err.message, 'error');
+      }
+      showLoading(false);
+    }
+
+    async function registerUser() {
+      const username    = document.getElementById('regUsername').value.trim();
+      const displayName = document.getElementById('regDisplayName').value.trim();
+      const email       = document.getElementById('regEmail').value.trim();
+      const password    = document.getElementById('regPassword').value;
+      const role        = document.getElementById('regRole').value;
+      if (!username || !displayName || !password) {
+        showMessage('regMessage', '全ての項目を入力してください（メールアドレスは任意）', 'error');
+        return;
+      }
+      showLoading(true);
+      try {
+        const res = await fetch('/WebGantt/api/auth.php?action=register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ username, displayName, email, password, role }),
+        });
+        const data = await res.json();
+        if (data.error) {
+          showMessage('regMessage', data.error, 'error');
+        } else if (data.ok) {
+          showMessage('regMessage', `ユーザー「${displayName}」を登録しました`, 'success');
+          document.getElementById('regUsername').value = '';
+          document.getElementById('regDisplayName').value = '';
+          document.getElementById('regEmail').value = '';
+          document.getElementById('regPassword').value = '';
+          await loadUserList();
+        }
+      } catch (err) {
+        showMessage('regMessage', '通信エラー: ' + err.message, 'error');
+      }
+      showLoading(false);
+    }
+
+    async function deleteUser(id, username) {
+      if (!confirm(`ユーザー「${username}」を削除しますか？\nこの操作は取り消せません。`)) return;
+      showLoading(true);
+      try {
+        const res = await fetch('/WebGantt/api/auth.php?action=delete', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ id }),
+        });
+        const data = await res.json();
+        if (data.error) {
+          showMessage('userListMessage', data.error, 'error');
+        } else if (data.ok) {
+          showMessage('userListMessage', `ユーザー「${username}」を削除しました`, 'success');
+          await loadUserList();
+        }
+      } catch (err) {
+        showMessage('userListMessage', '通信エラー: ' + err.message, 'error');
+      }
+      showLoading(false);
+    }
+
+    function filterUsers() {
+      userPage = 0;  // 検索時は先頭ページにリセット
+      renderUserTable(getFilteredUsers());
+    }
+
+    function getFilteredUsers() {
+      const q = (document.getElementById('userSearch')?.value || '').trim().toLowerCase();
+      if (!q) return allUsers;
+      return allUsers.filter(u =>
+        u.username.toLowerCase().includes(q) ||
+        u.display_name.toLowerCase().includes(q)
+      );
+    }
+
+    function showMessage(elId, text, type) {
+      const el = document.getElementById(elId);
+      el.textContent = text;
+      el.className = 'message ' + type;
+    }
+
+    function changeUserPage(delta) {
+      const total      = getFilteredUsers().length;
+      const totalPages = Math.ceil(total / USERS_PER_PAGE);
+      userPage = Math.max(0, Math.min(userPage + delta, totalPages - 1));
+      renderUserTable(getFilteredUsers());
+    }
+
+    function showLoading(show) {
+      const el = document.getElementById('loadingOverlay');
+      if (show) el.classList.add('visible');
+      else el.classList.remove('visible');
+    }
+
+    // ─── パスワード再設定（adminのみ） ─────────────────────
+    let resetPwTargetId = null;
+
+    function openResetPwModal(id, username, displayName) {
+      resetPwTargetId = id;
+      document.getElementById('resetPwTargetName').textContent = `${displayName}（${username}）`;
+      document.getElementById('resetPwNewPassword').value = '';
+      document.getElementById('resetPwConfirmPassword').value = '';
+      const msgEl = document.getElementById('resetPwMessage');
+      msgEl.className = 'message';
+      msgEl.textContent = '';
+      document.getElementById('resetPwModalOverlay').style.display = 'flex';
+      setTimeout(() => document.getElementById('resetPwNewPassword').focus(), 100);
+    }
+
+    function closeResetPwModal() {
+      document.getElementById('resetPwModalOverlay').style.display = 'none';
+      resetPwTargetId = null;
+    }
+
+    async function executeResetPw() {
+      if (!resetPwTargetId) return;
+      const newPass = document.getElementById('resetPwNewPassword').value;
+      const confirmPass = document.getElementById('resetPwConfirmPassword').value;
+      const msgEl = document.getElementById('resetPwMessage');
+
+      if (!newPass || !confirmPass) {
+        msgEl.textContent = 'パスワードを入力してください';
+        msgEl.className = 'message error';
+        return;
+      }
+      if (newPass.length < 6) {
+        msgEl.textContent = 'パスワードは6文字以上必要です';
+        msgEl.className = 'message error';
+        return;
+      }
+      if (newPass !== confirmPass) {
+        msgEl.textContent = 'パスワードが一致しません';
+        msgEl.className = 'message error';
+        return;
+      }
+
+      try {
+        const res = await fetch('/WebGantt/api/auth.php?action=resetpw', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ id: resetPwTargetId, newPassword: newPass }),
+        });
+        const data = await res.json();
+        if (data.error) {
+          msgEl.textContent = data.error;
+          msgEl.className = 'message error';
+        } else if (data.ok) {
+          closeResetPwModal();
+          showMessage('userListMessage', `パスワードを再設定しました`, 'success');
+          setTimeout(() => {
+            const el = document.getElementById('userListMessage');
+            if (el) { el.className = 'message'; el.textContent = ''; }
+          }, 3000);
+        }
+      } catch (err) {
+        msgEl.textContent = '通信エラー: ' + err.message;
+        msgEl.className = 'message error';
+      }
+    }
+
+    // モーダル外クリックで閉じる
+    document.getElementById('resetPwModalOverlay').addEventListener('click', function(e) {
+      if (e.target === this) closeResetPwModal();
+    });
+
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    function preg_match_username(username) {
+      return /^[a-zA-Z0-9_-]{3,32}$/.test(username);
+    }
+  </script>
+<script type="module" src="https://static.cloudflareinsights.com/beacon.min.js/v4513226cdae34746b4dedf0b4dfa099e1781791509496" integrity="sha512-ZE9pZaUXND66v380QUtch/5sE9tPFh2zg45pR2PB0CVkCtOREv2AJKkSidISWkysEuQ0EH8faUU5du78bx87UQ==" data-cf-beacon='{"version":"2024.11.0","token":"4edd5f8ec12a48cfa682ab8261b80a79","server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}' crossorigin="anonymous"></script>
+<script type="module" src="https://static.cloudflareinsights.com/beacon.min.js/v4513226cdae34746b4dedf0b4dfa099e1781791509496" integrity="sha512-ZE9pZaUXND66v380QUtch/5sE9tPFh2zg45pR2PB0CVkCtOREv2AJKkSidISWkysEuQ0EH8faUU5du78bx87UQ==" data-cf-beacon='{"version":"2024.11.0","token":"4edd5f8ec12a48cfa682ab8261b80a79"}' crossorigin="anonymous"></script>
+<script type="module" src="https://static.cloudflareinsights.com/beacon.min.js/v4513226cdae34746b4dedf0b4dfa099e1781791509496" integrity="sha512-ZE9pZaUXND66v380QUtch/5sE9tPFh2zg45pR2PB0CVkCtOREv2AJKkSidISWkysEuQ0EH8faUU5du78bx87UQ==" data-cf-beacon='{"version":"2024.11.0","token":"4edd5f8ec12a48cfa682ab8261b80a79"}' crossorigin="anonymous"></script>
+</body>
+</html>

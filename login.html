@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <!-- ============================================================
+       [Phase A] アプリ基準パスの外出し
+       - APP_BASE をデプロイ環境ごとに書き換えるだけで、
+         全ページの静的リンク・fetch のベースが切り替わる。
+       - 既存の絶対パス "/WebGantt/..." は影響を受けず、そのまま動く。
+       ============================================================ -->
+  <script>window.__APP_BASE__ = '/WebGantt/';</script>
+  <base href="/WebGantt/">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ガントチャート - ログイン</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    :root {
+      --bg-app: #f7f8fa;
+      --bg-surface: #ffffff;
+      --text-main: #2f3441;
+      --text-sub: #5f6775;
+      --text-muted: #8a93a3;
+      --line-strong: #dce2e8;
+      --line-mid: #e7ebf0;
+      --primary: #3457d5;
+      --primary-hover: #2b61e0;
+      --primary-soft: #eaf2ff;
+      --danger: #dc2626;
+      --success: #16a34a;
+      --hover: #fafcff;
+    }
+    body {
+      font-family: 'Segoe UI', 'Hiragino Sans', sans-serif;
+      background: var(--bg-app);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .login-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--line-mid);
+      border-radius: 8px;
+      padding: 40px;
+      width: 360px;
+      box-shadow: 0 10px 30px rgba(31, 41, 55, 0.08);
+    }
+    .login-card h1 {
+      font-size: 22px;
+      color: var(--text-main);
+      margin-bottom: 28px;
+      text-align: center;
+      font-weight: 700;
+    }
+    .form-group {
+      margin-bottom: 18px;
+    }
+    .form-group label {
+      display: block;
+      font-size: 13px;
+      color: var(--text-sub);
+      margin-bottom: 6px;
+      font-weight: 600;
+    }
+    .form-group input {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1px solid var(--line-strong);
+      border-radius: 6px;
+      font-size: 14px;
+      color: var(--text-main);
+      background: var(--bg-surface);
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    .form-group input:focus {
+      outline: none;
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px rgba(52, 87, 213, 0.10);
+    }
+    .btn-login {
+      width: 100%;
+      padding: 12px;
+      background: var(--primary);
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s;
+      margin-top: 8px;
+    }
+    .btn-login:hover { background: var(--primary-hover); }
+    .btn-login:disabled { background: var(--text-muted); cursor: not-allowed; }
+    .error-msg {
+      color: var(--danger);
+      font-size: 13px;
+      text-align: center;
+      margin-top: 12px;
+      min-height: 18px;
+    }
+    .loading {
+      display: inline-block;
+      width: 16px;
+      height: 16px;
+      border: 2px solid var(--line-mid);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      vertical-align: middle;
+      margin-right: 6px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+  <div class="login-card">
+    <h1>ガントチャート</h1>
+
+    <div class="form-group">
+      <label for="username">ユーザー名</label>
+      <input type="text" id="username" autocomplete="username">
+    </div>
+
+    <div class="form-group">
+      <label for="password">パスワード</label>
+      <input type="password" id="password" autocomplete="current-password">
+    </div>
+
+    <button class="btn-login" id="loginBtn" onclick="doLogin()">
+      ログイン
+    </button>
+
+    <div class="error-msg" id="errorMsg"></div>
+  </div>
+
+  <script>
+    document.getElementById('password').addEventListener('keydown', function(e) {
+      if (e.key === 'Enter') doLogin();
+    });
+    document.getElementById('username').addEventListener('keydown', function(e) {
+      if (e.key === 'Enter') document.getElementById('password').focus();
+    });
+
+    // ── ログアウト処理（?logout=1 パラメータがある場合） ──
+    (async function handleLogout() {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('logout') === '1') {
+        // ログアウトAPIを呼ぶ
+        try {
+          await fetch('/WebGantt/api/auth.php?action=logout', {
+            method: 'POST',
+            credentials: 'include',
+          });
+        } catch (e) { }
+        // URLから ?logout=1 を除去してログイン画面を表示
+        window.history.replaceState(null, '', window.location.pathname);
+        // ログイン画面を表示（自動ログインチェックはスキップ）
+        return;
+      }
+      // 通常アクセス: 既にログイン済みならガントチャートへ遷移
+      try {
+        const res = await fetch('/WebGantt/api/auth.php?action=me', { credentials: 'include' });
+        const data = await res.json();
+        if (data.authenticated) {
+          redirectToGantt();
+        }
+      } catch (e) { }
+    })();
+
+    async function redirectToGantt() {
+      const params = new URLSearchParams(window.location.search);
+      const redirect = params.get('redirect');
+      const project = params.get('project');
+      if (redirect) {
+        window.location.href = redirect;
+      } else if (project) {
+        // URLにprojectパラメータがある場合はそれを使用
+        const ganttUrl = '/WebGantt/gantt/gantt-collab.html?project=' + encodeURIComponent(project);
+        window.location.href = ganttUrl;
+      } else {
+        // ログイン時表示プロジェクト設定をAPIから取得
+        let targetProject = '';
+        try {
+          const res = await fetch('/WebGantt/api/projects.php?action=loginProject', { credentials: 'include' });
+          const data = await res.json();
+          if (data.project_id) {
+            targetProject = data.project_id;
+          }
+        } catch (e) { /* エラー時はロビーにフォールバック */ }
+
+        if (targetProject) {
+          // ログイン時表示プロジェクトが設定されている → URLに付与
+          window.location.href = '/WebGantt/gantt/gantt-collab.html?project=' + encodeURIComponent(targetProject);
+        } else {
+          // 未設定 → ロビープロジェクトを使用（ガントチャート側で自動判定）
+          window.location.href = '/WebGantt/gantt/gantt-collab.html';
+        }
+      }
+    }
+
+    async function doLogin() {
+      const username = document.getElementById('username').value.trim();
+      const password = document.getElementById('password').value;
+      const errorMsg = document.getElementById('errorMsg');
+      const loginBtn = document.getElementById('loginBtn');
+
+      if (!username || !password) {
+        errorMsg.textContent = 'ユーザー名とパスワードを入力してください';
+        return;
+      }
+
+      loginBtn.disabled = true;
+      loginBtn.innerHTML = '<span class="loading"></span>ログイン中...';
+      errorMsg.textContent = '';
+
+      try {
+        const res = await fetch('/WebGantt/api/auth.php?action=login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ username, password }),
+        });
+        const data = await res.json();
+
+        if (data.error) {
+          errorMsg.textContent = data.error;
+          loginBtn.disabled = false;
+          loginBtn.textContent = 'ログイン';
+          return;
+        }
+
+        if (data.ok) {
+          errorMsg.textContent = '';
+          loginBtn.innerHTML = 'ログイン成功';
+          loginBtn.style.background = 'var(--success)';
+          setTimeout(redirectToGantt, 500);
+        }
+      } catch (err) {
+        errorMsg.textContent = '通信エラー: ' + err.message;
+        loginBtn.disabled = false;
+        loginBtn.textContent = 'ログイン';
+      }
+    }
+  </script>
+<script type="module" src="https://static.cloudflareinsights.com/beacon.min.js/v4513226cdae34746b4dedf0b4dfa099e1781791509496" integrity="sha512-ZE9pZaUXND66v380QUtch/5sE9tPFh2zg45pR2PB0CVkCtOREv2AJKkSidISWkysEuQ0EH8faUU5du78bx87UQ==" data-cf-beacon='{"version":"2024.11.0","token":"4edd5f8ec12a48cfa682ab8261b80a79"}' crossorigin="anonymous"></script>
+</body>
+</html>

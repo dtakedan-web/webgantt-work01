@@ -1,0 +1,29 @@
+# 環境変数
+.env
+.env.local
+.env.*.local
+
+# Git 認証情報
+.git-credentials
+
+# PHP
+vendor/
+composer.phar
+
+# Node.js
+node_modules/
+gantt-ws/node_modules/
+
+# ログ・一時
+*.log
+tmp/
+.DS_Store
+
+# エディタ
+.vscode/
+.idea/
+
+# バックアップ
+*.bak
+*.orig
+webgantt_backup_*.tar.gz
