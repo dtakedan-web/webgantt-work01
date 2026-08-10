@@ -30698,13 +30698,21 @@ ${appendText}` : appendText;
   // 伝播そのものを止め、実際のクリック委譲は setTimeout で次のイベント
   // ループに回すことで、document 側のリスナーが今回のクリックに反応しない
   // ようにする。
-  function proxyClick(newId, oldId) {
+  // beforeDelegate: 実際のクリック委譲(setTimeout)より前に、同期的に
+  // 実行したい処理があれば渡す（例: 押下状態のUI更新）。
+  // stopImmediatePropagation() は「このボタン自身に後から登録された
+  // 別のリスナー」も含めて停止してしまうため、月/日表示ボタンのような
+  // 見た目更新処理は別リスナーに分けず、必ずこの beforeDelegate 経由で
+  // 同じリスナー内で実行すること（分けると stopImmediatePropagation の
+  // 影響で見た目更新が一切実行されなくなる不具合の原因になる）。
+  function proxyClick(newId, oldId, beforeDelegate) {
     var newBtn = document.getElementById(newId);
     if (!newBtn) return;
     newBtn.addEventListener('click', function (e) {
       e.preventDefault();
       e.stopPropagation();
       if (e.stopImmediatePropagation) e.stopImmediatePropagation();
+      if (typeof beforeDelegate === 'function') beforeDelegate();
       setTimeout(function () {
         var oldBtn = document.getElementById(oldId);
         if (oldBtn) oldBtn.click();
@@ -30735,24 +30743,25 @@ ${appendText}` : appendText;
 
     proxyClick('mobileUndoBtn', 'undoBtn');
     proxyClick('mobileRedoBtn', 'redoBtn');
-    proxyClick('mobileMonthViewBtn', 'monthViewBtn');
-    proxyClick('mobileDayViewBtn', 'dayViewBtn');
-    proxyClick('mobileMenuSettingsBtn', 'settingsBtn');
-    proxyClick('mobileMenuAccountBtn', 'collab-account-btn');
-    proxyClick('mobileMenuProjectBtn', 'collab-project-btn');
-    proxyClick('mobileMenuSwitchBtn', 'collab-switch-btn');
-    proxyClick('mobileMenuNotifBtn', 'notif-bell-btn');
-    proxyClick('mobileMenuLogoutBtn', 'collab-logout-btn');
 
-    // 月/日 表示切替の押下状態を更新
+    // 月/日 表示切替の押下状態(is-active)は、stopImmediatePropagation()の
+    // 影響を受けないよう、proxyClick の beforeDelegate 経由で同じリスナー
+    // 内で同期的に更新する（別リスナーに分けると実行されない不具合になる）。
     var monthBtn = document.getElementById('mobileMonthViewBtn');
     var dayBtn = document.getElementById('mobileDayViewBtn');
     function setActive(which) {
       if (monthBtn) monthBtn.classList.toggle('is-active', which === 'month');
       if (dayBtn) dayBtn.classList.toggle('is-active', which === 'day');
     }
-    if (monthBtn) monthBtn.addEventListener('click', function () { setActive('month'); });
-    if (dayBtn) dayBtn.addEventListener('click', function () { setActive('day'); });
+    proxyClick('mobileMonthViewBtn', 'monthViewBtn', function () { setActive('month'); });
+    proxyClick('mobileDayViewBtn', 'dayViewBtn', function () { setActive('day'); });
+
+    proxyClick('mobileMenuSettingsBtn', 'settingsBtn');
+    proxyClick('mobileMenuAccountBtn', 'collab-account-btn');
+    proxyClick('mobileMenuProjectBtn', 'collab-project-btn');
+    proxyClick('mobileMenuSwitchBtn', 'collab-switch-btn');
+    proxyClick('mobileMenuNotifBtn', 'notif-bell-btn');
+    proxyClick('mobileMenuLogoutBtn', 'collab-logout-btn');
 
     // 統合メニューの開閉
     var menuBtn = document.getElementById('mobileMenuBtn');
