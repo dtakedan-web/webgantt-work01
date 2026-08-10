@@ -30679,13 +30679,26 @@ ${appendText}` : appendText;
 
   // 元ボタンをクリック時に毎回検索して委譲する（collab-client.js の
   // 動的ボタン生成が非同期のため、ロード時ではなくクリック時に解決する）
+  //
+  // 注意: 「プロジェクト切替」ボタンのように、開閉状態を document 全体の
+  // クリックリスナー（「メニュー外クリックで閉じる」判定）で管理している
+  // 場合、本来のクリックイベントがこの後 document まで伝播を続けてしまい、
+  // 「新ボタン(=メニュー外)がクリックされた」と誤判定されて開いた直後に
+  // 閉じてしまう問題があった。stopPropagation + stopImmediatePropagation で
+  // 伝播そのものを止め、実際のクリック委譲は setTimeout で次のイベント
+  // ループに回すことで、document 側のリスナーが今回のクリックに反応しない
+  // ようにする。
   function proxyClick(newId, oldId) {
     var newBtn = document.getElementById(newId);
     if (!newBtn) return;
     newBtn.addEventListener('click', function (e) {
       e.preventDefault();
-      var oldBtn = document.getElementById(oldId);
-      if (oldBtn) oldBtn.click();
+      e.stopPropagation();
+      if (e.stopImmediatePropagation) e.stopImmediatePropagation();
+      setTimeout(function () {
+        var oldBtn = document.getElementById(oldId);
+        if (oldBtn) oldBtn.click();
+      }, 0);
     });
   }
 
