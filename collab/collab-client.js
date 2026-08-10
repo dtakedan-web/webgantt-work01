@@ -1302,13 +1302,20 @@
     }
 
     function init() {
-      const adjustStyle = document.createElement('style');
-      adjustStyle.id = 'collab-layout-adjust';
-      adjustStyle.textContent = [
-        '.app-shell { height: calc(100vh - 24px) !important; }',
-        '#statusToastRegion { bottom: 30px !important; }',
-      ].join('\n');
-      document.head.appendChild(adjustStyle);
+      // [Mobile] gantt-mobile.html では下部ステータスバーの機能は
+      // 統合メニューに集約するため、通常のレイアウト調整は行わず、
+      // ステータスバー自体は非表示にする（要素は残し、機能は再利用する）。
+      const _isMobilePage = Boolean(window.__GANTT_MOBILE__);
+
+      if (!_isMobilePage) {
+        const adjustStyle = document.createElement('style');
+        adjustStyle.id = 'collab-layout-adjust';
+        adjustStyle.textContent = [
+          '.app-shell { height: calc(100vh - 24px) !important; }',
+          '#statusToastRegion { bottom: 30px !important; }',
+        ].join('\n');
+        document.head.appendChild(adjustStyle);
+      }
 
       statusBar = document.createElement('div');
       statusBar.id = 'collab-status-bar';
@@ -1382,6 +1389,7 @@
 
       // Phase 2-B: プロジェクト管理ボタン
       var projectBtn = document.createElement('a');
+      projectBtn.id = 'collab-project-btn';
       projectBtn.textContent = 'プロジェクト管理';
       projectBtn.href = '#';
       applyBtnStyle(projectBtn, '#90caf9', 'rgba(144,202,249,0.45)');
@@ -1397,6 +1405,7 @@
 
       // Phase 2-A: アカウント管理ボタン
       var accountBtn = document.createElement('a');
+      accountBtn.id = 'collab-account-btn';
       accountBtn.textContent = 'アカウント管理';
       accountBtn.href = '#';
       applyBtnStyle(accountBtn, '#90caf9', 'rgba(144,202,249,0.45)');
@@ -1412,6 +1421,7 @@
 
       // Phase 2-A: ログアウトボタン
       logoutBtn = document.createElement('a');
+      logoutBtn.id = 'collab-logout-btn';
       logoutBtn.textContent = 'ログアウト';
       logoutBtn.href = '#';
       applyBtnStyle(logoutBtn, '#ef9a9a', 'rgba(239,154,154,0.40)');
@@ -1608,6 +1618,13 @@
       statusBar.appendChild(switchBtn);
       statusBar.appendChild(presenceEl);
       document.body.appendChild(statusBar);
+      if (_isMobilePage) {
+        // モバイル版では下部ステータスバーを非表示にする。
+        // 内部の要素（projectBtn/accountBtn/logoutBtn/switchBtn等）は
+        // DOM上に残しておき、gantt-mobile.html側の統合メニューから
+        // id経由でクリックを委譲できるようにする。
+        statusBar.style.display = 'none';
+      }
       // Phase 4: フィードボタンをステータスバーに追加（presenceEl の左に挿入）
       _initFeedUI(statusBar);
 
