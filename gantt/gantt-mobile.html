@@ -5726,6 +5726,18 @@ body.is-pane-resizing * {
 .context-menu-shortcut {
   display: none !important;
 }
+/* モバイル: .task-bar(および内部のリサイズハンドル)にtouch-action指定が
+   無かったため、タスクバー上でタッチ&ドラッグするとブラウザ標準のスクロール
+   (パン)ジェスチャーが優先され、JS側のカスタムポインター処理(移動/リサイズ/
+   長押しでの依存線作成)が全く実行されない不具合が起きていた(PC版はマウス操作
+   のためこの問題が発生せず、実機テストで初めて判明)。
+   タスクバー上ではブラウザ標準のジェスチャーを無効化し、JS側のPointer Events
+   処理に完全に委ねることで解消する。
+   （gantt-collab.html 本体・コアロジックは変更せず、CSSのみで対応） */
+.task-bar,
+.bar-handle {
+  touch-action: none;
+}
 </style>
 </head>
 <body>
