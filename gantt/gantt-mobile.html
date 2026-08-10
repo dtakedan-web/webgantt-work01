@@ -12320,6 +12320,14 @@ body.is-pane-resizing * {
         updateSelection(task.id);
         return;
       }
+      // モバイル: 長押し中(まだ指を離していない)にブラウザが独自に合成する
+      // contextmenuイベントは無視する。指を離した瞬間の判定はpointerup側
+      // (handlePointerUp)に一元化し、状態(interaction.linkDraft等)を
+      // 途中で破棄しないようにする。
+      if (interaction.mode === 'link-pending' || interaction.mode === 'link-dragging') {
+        event.preventDefault();
+        return;
+      }
       event.preventDefault();
       updateSelection(task.id);
       const point = getContentPoint(event);
@@ -12466,11 +12474,16 @@ body.is-pane-resizing * {
         updateSelection(task.id);
         return;
       }
-      if (interaction.mode === 'link-dragging' || Date.now() < suppressContextMenuUntil) {
+      // モバイル: 長押し中(まだ指を離していない)にブラウザが独自に合成する
+      // contextmenuイベントは無視する。指を離した瞬間の判定はpointerup側
+      // (handlePointerUp)に一元化し、状態(interaction.linkDraft等)を
+      // 途中で破棄しないようにする(以前はここでclearInteraction()していたため、
+      // 長押し確定直後にブラウザ標準のcontextmenuが割り込むと、依存線ドラフトの
+      // 状態が消えてしまい、その後スライドしても破線が表示されない不具合があった)。
+      if (interaction.mode === 'link-pending' || interaction.mode === 'link-dragging' || Date.now() < suppressContextMenuUntil) {
         event.preventDefault();
         return;
       }
-      if (interaction.mode === 'link-pending') clearInteraction();
       event.preventDefault();
       const point = getContentPoint(event);
       const dayIndex = getHoveredDayIndex(point.x);
@@ -19483,6 +19496,33 @@ ${appendText}` : appendText;
 
     if (interaction.mode === 'link-pending') {
       const releaseTaskId = findTaskIdAtClientPoint(event.clientX, event.clientY);
+      // モバイル: 長押し起点(mobileLongPress.fired)の場合、ブラウザ標準の
+      // contextmenuイベントは常に無視するようにしたため、「長押し確定→動かさず
+      // 離した」場合の階層メニュー表示はここで自前で行う(PC版では右クリック解放後に
+      // 発火するブラウザ標準contextmenuイベントがこの役割を担っている)。
+      if (mobileLongPress.fired) {
+        const sourceTaskId = interaction.taskId;
+        const point = getContentPoint(event);
+        const dayIdx = getHoveredDayIndex(point.x);
+        const sourceBar = (mobileLongPress.bar && document.body.contains(mobileLongPress.bar))
+          ? mobileLongPress.bar
+          : document.querySelector(`.task-bar[data-task-id="${sourceTaskId}"]`);
+        if (releaseTaskId !== sourceTaskId) {
+          suppressContextMenuUntil = Date.now() + 500;
+          clearInteraction();
+          return;
+        }
+        clearInteraction();
+        if (sourceTaskId && sourceBar) {
+          // PC版のcontextmenuハンドラと同様、複数タスク選択中はマルチ操作用メニューを表示する
+          if (hasMultipleSelectedTasks() && isTaskSelected(sourceTaskId)) {
+            showMultiTaskContextMenu(event.clientX, event.clientY, sourceBar, dayIdx);
+          } else {
+            showContextMenu(sourceTaskId, event.clientX, event.clientY, sourceBar, dayIdx);
+          }
+        }
+        return;
+      }
       if (!releaseTaskId) {
         suppressContextMenuUntil = Date.now() + 500;
       }
