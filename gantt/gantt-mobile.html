@@ -5670,6 +5670,14 @@ body.is-pane-resizing * {
 #mobileTopbar .mobile-view-group .mobile-text-btn + .mobile-text-btn {
   border-left: 1px solid var(--line-strong, #dce2e8);
 }
+#mobileTopbar .mobile-title-area .project-title-input {
+  width: 100%;
+  max-width: 100%;
+  height: 30px;
+  box-sizing: border-box;
+  font-size: 13px;
+  padding: 4px 8px;
+}
 #mobileMenuBtn {
   flex-shrink: 0;
 }
@@ -5713,9 +5721,7 @@ body.is-pane-resizing * {
 <body>
   <div class="app-shell">
     <div id="mobileTopbar">
-      <div class="mobile-title-area">
-        <button id="mobileProjectTitleBtn" type="button" class="mobile-text-btn project-title-btn" aria-label="プロジェクト名を編集" title="プロジェクト名を編集">新しいプロジェクト</button>
-      </div>
+      <div id="mobileTitleArea" class="mobile-title-area"></div>
       <button id="mobileUndoBtn" type="button" class="mobile-text-btn" aria-label="元に戻す" title="元に戻す">戻す</button>
       <button id="mobileRedoBtn" type="button" class="mobile-text-btn" aria-label="やり直す" title="やり直す">進む</button>
       <div class="mobile-view-group" role="group" aria-label="表示スケール">
@@ -30670,20 +30676,40 @@ ${appendText}` : appendText;
 <script>
 (function () {
   'use strict';
+
+  // 元ボタンをクリック時に毎回検索して委譲する（collab-client.js の
+  // 動的ボタン生成が非同期のため、ロード時ではなくクリック時に解決する）
   function proxyClick(newId, oldId) {
     var newBtn = document.getElementById(newId);
-    var oldBtn = document.getElementById(oldId);
-    if (!newBtn || !oldBtn) return;
+    if (!newBtn) return;
     newBtn.addEventListener('click', function (e) {
       e.preventDefault();
-      oldBtn.click();
+      var oldBtn = document.getElementById(oldId);
+      if (oldBtn) oldBtn.click();
     });
   }
 
+  // #projectTitleBtn / #projectTitleInput の実DOM要素を、非表示化した
+  // 旧トップバーから新しい #mobileTitleArea へ移動する。
+  // 要素そのものを移動するため、既存のイベントリスナーや ui.projectTitleBtn /
+  // ui.projectTitleInput 参照はそのまま有効（コアロジック非改変）。
+  function relocateProjectTitleElements() {
+    var titleArea = document.getElementById('mobileTitleArea');
+    var titleBtn = document.getElementById('projectTitleBtn');
+    var titleInput = document.getElementById('projectTitleInput');
+    if (!titleArea || !titleBtn || !titleInput) return false;
+    if (titleBtn.parentElement === titleArea) return true; // already moved
+    titleArea.appendChild(titleBtn);
+    titleArea.appendChild(titleInput);
+    titleBtn.classList.add('mobile-text-btn');
+    return true;
+  }
+
   function wire() {
-    // プロジェクト名（既存の projectTitleBtn 等、要素IDは元ファイル依存のため
-    // 安全にフォールバック: 存在すれば proxy、無ければ何もしない）
-    proxyClick('mobileProjectTitleBtn', 'projectTitleBtn');
+    // プロジェクト名編集用の実要素を移動（新規追加のボタンは使わず、
+    // 元の #projectTitleBtn 自体をそのまま新トップバー内に表示する）
+    relocateProjectTitleElements();
+
     proxyClick('mobileUndoBtn', 'undoBtn');
     proxyClick('mobileRedoBtn', 'redoBtn');
     proxyClick('mobileMonthViewBtn', 'monthViewBtn');
@@ -30725,6 +30751,17 @@ ${appendText}` : appendText;
         });
       });
     }
+
+    // collab-client.js による動的ボタン生成(UI.init())が非同期のため、
+    // #projectTitleBtn 等が読込直後に見つからない場合に備えて、
+    // 一定時間リトライする（プロジェクト名移動用）。
+    var relocateRetries = 0;
+    var relocateTimer = setInterval(function () {
+      relocateRetries += 1;
+      if (relocateProjectTitleElements() || relocateRetries > 40) {
+        clearInterval(relocateTimer);
+      }
+    }, 250);
   }
 
   if (document.readyState === 'loading') {
