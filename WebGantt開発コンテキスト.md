@@ -53,7 +53,8 @@
 
 ```
 /media/HDD1_DATA/Web/WebGantt/
-├── gantt-collab.html              ガントチャート本体
+└── gantt/
+│   └──gantt-collab.html              ガントチャート本体
 ├── login.html                     ログイン画面
 ├── projects.html                  プロジェクト管理画面
 ├── account.html                   アカウント設定画面
@@ -64,12 +65,12 @@
 │   ├── notifications.php          通知API
 │   ├── health.php                 ヘルスチェック
 │   ├── user_view_settings.php     ビュー設定API
-│   ├── MailSender.php             メール送信クラス(Phase 5-9)
+│   ├── MailSender.php             メール送信クラス
 │   ├── send_daily_emails.php      日次メール送信cron
 │   ├── .env                       cron実行用環境変数(chmod 600)
-│   └── vendor/                    PHPMailer(composer)
+│   └── vendor/                    PHPMailer(composeにてインストール)
 └── collab/
-    └── collab-client.js           協調編集クライアント
+       └── collab-client.js           協調編集クライアント
 
 /opt/gantt-ws/
 ├── server.js                      WebSocketサーバー
@@ -162,5 +163,19 @@ document.dispatchEvent(new CustomEvent('gantt:op', { detail: { op: 'state_sync',
 3. **UI/UXを変えない**: 既存のポップオーバー・ダイアログ・ツールバーの中身は変更禁止
 4. **COLLAB-HOOKを忘れない**: 状態変更関数の`render()`の後に`gantt:op`イベントを発火する
 5. **両方のファイルに反映**: コア部分の変更は`gantt-v0771.html`(ローカル)と`gantt-collab.html`(Web)の両方に反映する
+
+---
+
+## 10. GitHubコミットメッセージの形式(2026-08-10追加)
+
+すべてのコミットメッセージは以下の形式でまとめる:
+
+```
+【修正ファイル】XXX
+【修正内容】XXX
+```
+
+- 複数ファイルを修正した場合は改行で列記する
+- 修正内容は簡潔に要点をまとめる(詳細な背景説明は本文下部に補足として続けてよい)
 
 &nbsp;
