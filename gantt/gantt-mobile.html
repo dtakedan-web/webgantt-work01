@@ -5746,6 +5746,25 @@ body.is-pane-resizing * {
 .dependency-hit {
   touch-action: none;
 }
+/* モバイル: タスクが増えて右ペインのグリッド(.timeline-scroller)の内容が
+   画面の縦幅を超えても、空白グリッド領域を指でなぞってもスクロールできず、
+   一覧の最下部(「＋ タスク追加」ボタン等)に到達できない不具合が実機テストで
+   見つかった。
+   原因は、.timeline-scrollerにtouch-action指定が無い(デフォルトのauto)状態で、
+   空白領域へのpointerdownは常にbeginCreate()(新規タスク作成のドラッグ待機)を
+   開始してしまうため、ブラウザ側のタッチスクロールジェスチャー認識とJS側の
+   カスタムポインター処理が競合し、縦方向のネイティブスクロールが機能しなく
+   なっていたこと。
+   touch-action: pan-y を指定し、縦方向のネイティブスクロールジェスチャーを
+   ブラウザに優先させる。新規タスク作成ドラッグは横方向(日付軸)の移動のみを
+   実際のプレビュー範囲計算に使用しており(縦方向はpointerdown時点のホバー行
+   判定にのみ使用)、pan-y指定後も横方向のドラッグ操作(createモードへの遷移、
+   端でのオートスクロール)はブラウザに奪われずJS側のPointer Events処理に
+   届き続けるため、既存のタスク作成機能に影響しない。
+   （gantt-collab.html 本体・コアロジックは変更せず、CSSのみで対応） */
+.timeline-scroller {
+  touch-action: pan-y;
+}
 /* モバイル: 実績機能ON時にタスク名ラベルを最前面表示するための
    .bar-label-float は、.task-bar の子要素ではなく兄弟要素として独立配置される
    ため、.task-bar { user-select: none; } のCSS継承が効かず、依存線の当たり
