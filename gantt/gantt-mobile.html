@@ -5746,6 +5746,18 @@ body.is-pane-resizing * {
 .dependency-hit {
   touch-action: none;
 }
+/* モバイル: 実績機能ON時にタスク名ラベルを最前面表示するための
+   .bar-label-float は、.task-bar の子要素ではなく兄弟要素として独立配置される
+   ため、.task-bar { user-select: none; } のCSS継承が効かず、依存線の当たり
+   判定(細い線)から指の位置が少しズレてこのラベル要素に長押しが伝わった際に、
+   ブラウザ標準のテキスト選択(選択ハンドル表示)が発動してしまう不具合が
+   実機テストで見つかった。ラベル要素自体にuser-select: noneを指定して防止する。
+   （gantt-collab.html 本体・コアロジックは変更せず、CSSのみで対応） */
+.bar-label-float {
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
 </style>
 </head>
 <body>
