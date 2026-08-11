@@ -134,6 +134,10 @@
     <div class="error-msg" id="errorMsg"></div>
   </div>
 
+  <!-- モバイル/タブレット判定の共通ロジック（isMobileOrTabletDevice()）。
+       projects.html / account.html でも将来同じ関数を利用する想定のため、
+       共有ファイルとして切り出している。 -->
+  <script src="/WebGantt/collab/device-detect.js"></script>
   <script>
     document.getElementById('password').addEventListener('keydown', function(e) {
       if (e.key === 'Enter') doLogin();
@@ -172,11 +176,16 @@
       const params = new URLSearchParams(window.location.search);
       const redirect = params.get('redirect');
       const project = params.get('project');
+
+      // 端末判定（UA＋タッチ判定、ウィンドウ幅は使わない。device-detect.js参照）。
+      // モバイル/タブレットならgantt-mobile.html、それ以外(PC)ならgantt-collab.htmlへ。
+      const ganttFile = isMobileOrTabletDevice() ? 'gantt-mobile.html' : 'gantt-collab.html';
+
       if (redirect) {
         window.location.href = redirect;
       } else if (project) {
         // URLにprojectパラメータがある場合はそれを使用
-        const ganttUrl = '/WebGantt/gantt/gantt-collab.html?project=' + encodeURIComponent(project);
+        const ganttUrl = '/WebGantt/gantt/' + ganttFile + '?project=' + encodeURIComponent(project);
         window.location.href = ganttUrl;
       } else {
         // ログイン時表示プロジェクト設定をAPIから取得
@@ -191,10 +200,10 @@
 
         if (targetProject) {
           // ログイン時表示プロジェクトが設定されている → URLに付与
-          window.location.href = '/WebGantt/gantt/gantt-collab.html?project=' + encodeURIComponent(targetProject);
+          window.location.href = '/WebGantt/gantt/' + ganttFile + '?project=' + encodeURIComponent(targetProject);
         } else {
           // 未設定 → ロビープロジェクトを使用（ガントチャート側で自動判定）
-          window.location.href = '/WebGantt/gantt/gantt-collab.html';
+          window.location.href = '/WebGantt/gantt/' + ganttFile;
         }
       }
     }

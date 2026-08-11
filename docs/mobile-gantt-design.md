@@ -103,12 +103,14 @@ webapp/
 
 ---
 
-## 5. デバイス判定・ルーティング
+## 5. デバイス判定・ルーティング（Task #4・実装済み）
 
-- `login.html` の `redirectToGantt()`（171〜200行目）に、モバイル/タブレット判定を追加する。
-- 判定方法: `navigator.userAgent` によるモバイル/タブレット判定、または `window.matchMedia('(max-width: 1024px)')` 等の併用を検討（実装時に確定）。
-- 判定がモバイル/タブレットの場合は `gantt-mobile.html` へ、それ以外（PC）は既存の `gantt-collab.html` へ遷移させる。
-- URLパラメータ（`redirect`/`project`）や `action=loginProject` によるプロジェクト解決ロジックは変更せず、遷移先のファイル名のみ分岐させる。
+- `login.html` の `redirectToGantt()`（171〜200行目付近）に、モバイル/タブレット判定を追加した。
+- 判定方法【確定】: `navigator.userAgent` による判定（Android/iPhone/iPod/BlackBerry/IEMobile/Opera Mini + クラシックiPad UA）に加え、iPadOS 13以降がUAを"Macintosh"と偽装する問題への対策として `navigator.maxTouchPoints > 1` とのAND判定を併用する。`window.matchMedia`やウィンドウ幅によるビューポート判定は**採用しない**（ログイン時の一度限りの遷移判定であり、PCブラウザのウィンドウを狭めただけでモバイル版に遷移させたくないため。ユーザー確認済み、2026-08-11）。
+- 判定関数 `isMobileOrTabletDevice()` は `collab/device-detect.js` に切り出し、`login.html` から `<script src="/WebGantt/collab/device-detect.js"></script>` で読み込む。`login.html`/`projects.html`/`account.html`は元来共有JSファイルを持たない自己完結ページ群だが、将来`projects.html`/`account.html`の「ガントチャートへ戻る」リンク（現状`gantt-collab.html`固定）にも同じ判定が必要になる可能性が高いと判断し、単一のソースオブトゥルースとして共有ファイル化した（ユーザー確認済み、2026-08-11。この時点では`projects.html`/`account.html`自体の改修は未着手・スコープ外のまま）。
+- 判定がモバイル/タブレットの場合は `gantt-mobile.html` へ、それ以外（PC）は `gantt-collab.html` へ遷移させる。`redirectToGantt()`内の3つの遷移先URL構築箇所（`project`パラメータ利用時／`action=loginProject`のAPI結果利用時／フォールバック時）全てで、ファイル名部分のみを変数`ganttFile`で分岐させた。
+- URLパラメータ（`redirect`/`project`）や `action=loginProject` によるプロジェクト解決ロジック、`?logout=1`処理、既存ログイン済み判定（`/me` API呼び出し後の自動`redirectToGantt()`呼び出し）は変更していない。`redirect`パラメータ分岐（既に完全なURLを含む）は本判定の対象外のまま素通しとする。
+- Playwright（Pixel 5 / iPhone 13 / iPad(gen7) / iPadOS13+偽装UA+マルチタッチ / 通常のデスクトップUA・Mac実機相当UA無タッチの計6パターン）で`isMobileOrTabletDevice()`の判定結果を検証、また`redirectToGantt()`の3分岐×モバイル/PC双方（`redirect`透過・`project`パラメータ・API経由`targetProject`・フォールバックの計7ケース）で実際の遷移先URLを検証し、全てのケースで期待通りの動作を確認済み。
 
 ---
 
@@ -127,7 +129,8 @@ webapp/
 
 ## 7. 未確定事項・今後の検討事項
 
-- デバイス判定の具体的な実装方法（UA判定 vs メディアクエリ vs 両方併用）は実装時に確定。
+- 【確定・実装済み(Task #4)】デバイス判定の具体的な実装方法は「UA判定＋タッチ判定の併用、メディアクエリ/ウィンドウ幅は不使用」に確定し、`login.html`の`redirectToGantt()`に実装した。詳細は5節参照。
+- 【今後の検討事項・未着手】`projects.html`/`account.html`の「ガントチャートへ戻る」リンクが`gantt-collab.html`に固定されており、モバイル/タブレット端末でこれらのページに遷移した場合にPC版へ戻ってしまう不整合がユーザー自身の調査で判明している(2026-08-11)。Task #4実装時点でこの2ファイル自体の改修はスコープ外としたが、将来同じ`isMobileOrTabletDevice()`判定を再利用できるよう、判定ロジックは`collab/device-detect.js`として既に共有ファイル化済み(5節参照)。実際の改修（`<script src>`追加、リンク先URLの動的切り替え）は次回別途の設計確認を経て着手する。
 - タスク長押し時の簡易操作シートに含める項目の精査（切り取り/コピー/貼り付け/今日に移動/1階層下に追加、のうちどれをどう優先表示するか）は実装時に詳細UIを提示し再確認する。
 - 【右ペイン日付エリアのスワイプ操作は実装不要と判断・確定】通常表示状態で右ペインの何もないマス目をドラッグすれば左右に移動できる（既存の`beginCreate()`起点のポインタドラッグによるスクロール挙動）ため、当初検討していたスワイプ専用の移動操作は追加実装しないこととした（ユーザー確認済み、2026-08-11）。
 - 【ダブルタップで「今日」付近へ移動する機能・実装済み】上記の判断に伴い、初期スコープ外としていた本機能を前倒しで実装した（`gantt-mobile.html`のみ、`gantt-collab.html`は無変更でPC版は引き続き今日ボタンを使用）。
