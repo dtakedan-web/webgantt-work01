@@ -439,7 +439,13 @@
     </div>
   </div>
 
+  <!-- モバイル/タブレット判定の共通ロジック（isMobileOrTabletDevice()）。
+       login.htmlと同じ判定ロジックを共有ファイルから読み込む。 -->
+  <script src="/WebGantt/collab/device-detect.js"></script>
   <script>
+    // アクセス端末に応じたガント画面ファイル名（PC=gantt-collab.html / モバイル・タブレット=gantt-mobile.html）
+    const GANTT_FILE = isMobileOrTabletDevice() ? 'gantt-mobile.html' : 'gantt-collab.html';
+
     let currentUser = null;
     let allUsers = [];
     let editingId = null;
@@ -461,12 +467,13 @@
           const emailInput = document.getElementById('myEmail');
           if (emailInput) emailInput.value = currentUser.email;
         }
-      // 「ガントチャートへ戻る」リンクに直前のプロジェクトIDを付与
+      // 「ガントチャートへ戻る」リンクをアクセス端末に応じたファイルへ切り替える。
+      // 直前のプロジェクトIDが分かっている場合はprojectパラメータも付与する。
       try {
         const lastProject = sessionStorage.getItem('gantt_last_project');
         const backLink = document.getElementById('backToGanttLink');
-        if (backLink && lastProject) {
-          backLink.href = '/WebGantt/gantt/gantt-collab.html?project=' + encodeURIComponent(lastProject);
+        if (backLink) {
+          backLink.href = '/WebGantt/gantt/' + GANTT_FILE + (lastProject ? ('?project=' + encodeURIComponent(lastProject)) : '');
         }
       } catch (e) {}
         if (currentUser.role === 'admin') {
