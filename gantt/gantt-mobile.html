@@ -5738,6 +5738,14 @@ body.is-pane-resizing * {
 .bar-handle {
   touch-action: none;
 }
+/* モバイル: 依存線(矢印)の当たり判定要素(.dependency-hit)にも同様に
+   touch-action指定が無く、長押し中にブラウザ標準のスクロールジェスチャーが
+   割り込むとpointermove/pointerupが正しく届かず長押し判定が壊れる恐れが
+   あるため、タスクバーと同様に無効化しておく。
+   （gantt-collab.html 本体・コアロジックは変更せず、CSSのみで対応） */
+.dependency-hit {
+  touch-action: none;
+}
 </style>
 </head>
 <body>
@@ -19674,6 +19682,38 @@ ${appendText}` : appendText;
     }, MOBILE_LONG_PRESS_MS);
   }
 
+  // モバイル: 依存線(矢印)の長押しでも、ブラウザが指を離す前にcontextmenuを
+  // 合成発火してしまうため、タスクバーと同じ「長押し確定後に指を離したら
+  // メニュー表示」という挙動に揃える。依存線にはドラッグして別操作へ分岐する
+  // 要素が無いため、タスクバー版より単純な専用の長押しタイマーで対応する。
+  const MOBILE_DEP_LONG_PRESS_MS = 450;
+  const MOBILE_DEP_LONG_PRESS_MOVE_TOLERANCE = 10;
+  const mobileDepLongPress = { timer: null, pointerId: null, dependencyId: null, startClientX: 0, startClientY: 0, fired: false };
+
+  function clearMobileDepLongPressTimer() {
+    if (mobileDepLongPress.timer) {
+      clearTimeout(mobileDepLongPress.timer);
+      mobileDepLongPress.timer = null;
+    }
+    mobileDepLongPress.pointerId = null;
+    mobileDepLongPress.dependencyId = null;
+    mobileDepLongPress.fired = false;
+  }
+
+  function armMobileDepLongPress(event, dependencyId) {
+    clearMobileDepLongPressTimer();
+    mobileDepLongPress.pointerId = event.pointerId;
+    mobileDepLongPress.dependencyId = dependencyId;
+    mobileDepLongPress.startClientX = event.clientX;
+    mobileDepLongPress.startClientY = event.clientY;
+    mobileDepLongPress.fired = false;
+    mobileDepLongPress.timer = setTimeout(function () {
+      mobileDepLongPress.timer = null;
+      mobileDepLongPress.fired = true;
+      if (navigator.vibrate) { try { navigator.vibrate(15); } catch (e) {} }
+    }, MOBILE_DEP_LONG_PRESS_MS);
+  }
+
   function handleTimelinePointerDown(event) {
     if (!isTimelineDirectManipulationEnabled()) return;
     clearPendingTaskPreviewDialog();
@@ -19743,6 +19783,54 @@ ${appendText}` : appendText;
       syncSelectedDependencyState(dependencyId);
       updateSelectionUI();
     }
+    // モバイル: マウス右クリック(button===2)は従来通りネイティブcontextmenuに任せる。
+    // タッチ相当のbutton===0の場合のみ、「長押し確定→動かさず指を離す」の判定用に
+    // 専用タイマーを起動する(依存線パス要素はrender()の度に再生成されるため、
+    // ポインターキャプチャは再生成されない安定したdependencyLayer自体に対して行う)。
+    if (event.button === 0) {
+      armMobileDepLongPress(event, dependencyId);
+      event.currentTarget?.setPointerCapture?.(event.pointerId);
+    }
+  }
+
+  function handleDependencyPointerMove(event) {
+    if (mobileDepLongPress.pointerId !== event.pointerId) return;
+    const moveDistance = Math.hypot(event.clientX - mobileDepLongPress.startClientX, event.clientY - mobileDepLongPress.startClientY);
+    // モバイル: 長押し確定前に一定以上動いた場合は「長押しではない」とみなし、
+    // メニュー表示用のタイマーをキャンセルする(依存線には作成操作のような
+    // スライド分岐先が無いため、キャンセル後は何もしない=通常のタップ判定に委ねる)。
+    if (!mobileDepLongPress.fired && moveDistance >= MOBILE_DEP_LONG_PRESS_MOVE_TOLERANCE) {
+      clearMobileDepLongPressTimer();
+    }
+  }
+
+  function handleDependencyPointerUp(event) {
+    if (mobileDepLongPress.pointerId !== event.pointerId) return;
+    const dependencyId = mobileDepLongPress.dependencyId;
+    const fired = mobileDepLongPress.fired;
+    clearMobileDepLongPressTimer();
+    if (!fired || !dependencyId) return;
+    // モバイル: 長押し確定→動かさず指を離した場合のメニュー表示。ネイティブ
+    // contextmenuイベントはhandleDependencyContextMenu側で長押し中は抑制して
+    // いるため、ここで自前で選択更新+メニュー表示を行う(PC版のhandleDependency
+    // ContextMenuと同じロジック)。
+    if (getDependencySelectionModifierMode(event) !== 'replace') {
+      applyDependencySelectionFromEvent(dependencyId, event);
+    } else if (!(hasMultipleSelectedDependencies() && isDependencySelected(dependencyId))) {
+      selectDependency(dependencyId);
+    } else {
+      state.selectedDependencyId = dependencyId;
+      syncSelectedDependencyState(dependencyId);
+      updateSelectionUI();
+    }
+    if (!isTimelineDirectManipulationEnabled()) return;
+    suppressContextMenuUntil = Date.now() + 500;
+    showDependencyContextMenu(dependencyId, event.clientX, event.clientY);
+  }
+
+  function handleDependencyPointerCancel(event) {
+    if (mobileDepLongPress.pointerId !== event.pointerId) return;
+    clearMobileDepLongPressTimer();
   }
 
   function handleDependencyClick(event) {
@@ -19759,6 +19847,13 @@ ${appendText}` : appendText;
     if (!dependencyId) return;
     event.preventDefault();
     event.stopPropagation();
+    // モバイル: 長押し中(まだ指を離していない)にブラウザが独自に合成する
+    // contextmenuイベントは無視する。指を離した瞬間の判定はpointerup側
+    // (handleDependencyPointerUp)に一元化する。PC版のマウス右クリックは
+    // 長押しタイマーを起動しない(pointerId===nullのまま)ため影響を受けない。
+    if (mobileDepLongPress.pointerId !== null || Date.now() < suppressContextMenuUntil) {
+      return;
+    }
     if (getDependencySelectionModifierMode(event) !== 'replace') {
       applyDependencySelectionFromEvent(dependencyId, event);
     } else if (!(hasMultipleSelectedDependencies() && isDependencySelected(dependencyId))) {
@@ -24797,6 +24892,12 @@ ${appendText}` : appendText;
     ui.barsLayer.addEventListener('click', handleBarsClick);
     ui.barsLayer.addEventListener('dblclick', handleBarsDoubleClick);
     ui.dependencyLayer.addEventListener('pointerdown', handleDependencyPointerDown);
+    // モバイル: 長押しの移動判定/離した判定のため、依存線レイヤー自体に
+    // pointermove/pointerup/pointercancelを追加する(個々のpath要素はrender()の
+    // 度に再生成されるため、安定した親要素に対してリッスンする)。
+    ui.dependencyLayer.addEventListener('pointermove', handleDependencyPointerMove);
+    ui.dependencyLayer.addEventListener('pointerup', handleDependencyPointerUp);
+    ui.dependencyLayer.addEventListener('pointercancel', handleDependencyPointerCancel);
     ui.dependencyLayer.addEventListener('click', handleDependencyClick);
     ui.dependencyLayer.addEventListener('dblclick', handleDependencyDoubleClick);
     ui.dependencyLayer.addEventListener('contextmenu', handleDependencyContextMenu);
