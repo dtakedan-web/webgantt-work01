@@ -5755,15 +5755,22 @@ body.is-pane-resizing * {
    開始してしまうため、ブラウザ側のタッチスクロールジェスチャー認識とJS側の
    カスタムポインター処理が競合し、縦方向のネイティブスクロールが機能しなく
    なっていたこと。
-   touch-action: pan-y を指定し、縦方向のネイティブスクロールジェスチャーを
-   ブラウザに優先させる。新規タスク作成ドラッグは横方向(日付軸)の移動のみを
-   実際のプレビュー範囲計算に使用しており(縦方向はpointerdown時点のホバー行
-   判定にのみ使用)、pan-y指定後も横方向のドラッグ操作(createモードへの遷移、
-   端でのオートスクロール)はブラウザに奪われずJS側のPointer Events処理に
-   届き続けるため、既存のタスク作成機能に影響しない。
-   （gantt-collab.html 本体・コアロジックは変更せず、CSSのみで対応） */
+   当初 touch-action: pan-y でブラウザのネイティブスクロールに任せる対応を
+   試したが、実機テストではタスク数が増えるほど「最下部の一定範囲にどうしても
+   届かない」症状が悪化することが判明した。仮想スクロール(Virtual Scrolling)
+   によりスクロール中に行のDOMを頻繁に再構築しており、モバイルブラウザの
+   慣性スクロール(モメンタムスクロール)の最中にDOMを変更するとスクロール
+   距離の計算を見誤って早めに止まってしまう挙動と競合していたと考えられる。
+   このため、ブラウザのネイティブジェスチャーには一切頼らず、既存のヘッダー
+   部分の左右ドラッグスクロール(timelineHeaderDragState等)と同じ考え方で、
+   縦方向もJS側のPointer Events処理で確実にscrollTopを制御する方式に変更した。
+   touch-actionは元のnone指定に戻し、JS側の判定(handleTimelinePointerDown/
+   handlePointerMove内のverticalScrollDragState関連処理)で「縦方向優位の
+   移動か」「横方向優位の移動か」を判定し、縦方向優位の場合のみ独自の
+   ドラッグスクロール処理に切り替える。
+   （gantt-collab.html 本体・コアロジックは変更せず、gantt-mobile.htmlのみで対応） */
 .timeline-scroller {
-  touch-action: pan-y;
+  touch-action: none;
 }
 /* モバイル: 実績機能ON時にタスク名ラベルを最前面表示するための
    .bar-label-float は、.task-bar の子要素ではなく兄弟要素として独立配置される
@@ -8314,6 +8321,9 @@ body.is-pane-resizing * {
     startTimelineUnit: 0,
     startClientX: 0,
     startClientY: 0,
+    // モバイル: 空白グリッド領域のドラッグ開始時のscrollTop
+    // (縦方向優位のドラッグと判定された場合の独自スクロール処理で使用)
+    startScrollTop: 0,
     taskId: null,
     originalTask: null,
     originalRowId: null,
@@ -19121,6 +19131,7 @@ ${appendText}` : appendText;
     interaction.startTimelineUnit = 0;
     interaction.startClientX = 0;
     interaction.startClientY = 0;
+    interaction.startScrollTop = 0;
     interaction.taskId = null;
     interaction.originalTask = null;
     interaction.originalRowId = null;
@@ -19216,6 +19227,10 @@ ${appendText}` : appendText;
     interaction.startTimelineUnit = pointInfo.startUnit;
     interaction.startClientX = event.clientX;
     interaction.startClientY = event.clientY;
+    // モバイル: 縦方向優位のドラッグと判定された場合、独自の縦スクロール処理
+    // (create-pending → scroll-drag への切り替え)で使用するため、ドラッグ
+    // 開始時点のscrollTopを記録しておく。
+    interaction.startScrollTop = ui.timelineScroller.scrollTop;
     const baseLevel = hover.row ? hover.row.level : 0;
     interaction.preview = {
       rowIndex: hover.row ? hover.rowIndex + 1 : hover.rowIndex,
@@ -19297,8 +19312,24 @@ ${appendText}` : appendText;
 
     if (interaction.mode === 'create-pending' || interaction.mode === 'create') {
       const currentPointInfo = getTimelineInteractionPointInfo(point.x);
+      // モバイル: 空白グリッド領域でのドラッグ開始直後は、指の移動方向が
+      // 「横方向優位(新規タスク作成)」か「縦方向優位(一覧スクロール)」かが
+      // まだ確定していない。DRAG_THRESHOLDを超えた時点の移動量の縦横比較で
+      // 判定し、縦方向優位の場合は独自スクロール処理(scroll-drag)に切り替える。
+      // (ブラウザ標準のタッチスクロールに任せると、仮想スクロールによる
+      // 描画中のDOM書き換えと競合してスクロールが途中で止まってしまう不具合が
+      // 実機で確認されたため、JS側でscrollTopを直接制御する方式にしている)
       if (interaction.mode === 'create-pending' && moveDistance >= DRAG_THRESHOLD) {
-        interaction.mode = 'create';
+        const deltaX = Math.abs(event.clientX - interaction.startClientX);
+        const deltaY = Math.abs(event.clientY - interaction.startClientY);
+        if (deltaY > deltaX) {
+          interaction.mode = 'scroll-drag';
+          ui.ghostBar.hidden = true;
+          interaction.preview = null;
+          ui.timelineScroller.setPointerCapture?.(event.pointerId);
+        } else {
+          interaction.mode = 'create';
+        }
       }
       if (interaction.mode === 'create') {
         const startUnit = Math.min(interaction.startTimelineUnit, currentPointInfo.startUnit);
@@ -19310,6 +19341,16 @@ ${appendText}` : appendText;
         renderGhost();
         setTooltip(`${formatSlashDate(dayIndexToIso(interaction.preview.startIndex))} - ${formatSlashDate(dayIndexToIso(interaction.preview.endIndex))}`, event.clientX, event.clientY);
       }
+      return;
+    }
+
+    if (interaction.mode === 'scroll-drag') {
+      const deltaY = event.clientY - interaction.startClientY;
+      const maxScrollTop = Math.max(0, ui.timelineScroller.scrollHeight - ui.timelineScroller.clientHeight);
+      const nextScrollTop = clamp(interaction.startScrollTop - deltaY, 0, maxScrollTop);
+      ui.timelineScroller.scrollTop = nextScrollTop;
+      interaction.moved = true;
+      syncHeaders();
       return;
     }
 
@@ -19592,6 +19633,13 @@ ${appendText}` : appendText;
         pushUndo(cloneDataForUndo());
         createTaskWithRowAtPreview(true);
       }
+      clearInteraction();
+      return;
+    }
+
+    // モバイル: 空白グリッド領域を縦方向優位にドラッグした場合(一覧スクロール)。
+    // タスクは作成せず、ポインタキャプチャの解放も含めてclearInteraction()に任せる。
+    if (interaction.mode === 'scroll-drag') {
       clearInteraction();
       return;
     }
