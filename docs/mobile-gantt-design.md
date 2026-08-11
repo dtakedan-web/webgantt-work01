@@ -123,6 +123,20 @@ webapp/
 - `sessionStorage.gantt_last_project`の読み書きロジック自体（`collab-client.js`側での設定・削除処理）は変更していない。
 - Playwright（`projects.html`/`account.html`それぞれについて、モバイル(iPhone13/Pixel5)・PCの2端末×`gantt_last_project`あり/なしの計4パターン、合計8ケース）で、「ガントチャートへ戻る」リンクおよびプロジェクト一覧の直接リンクが正しいファイル名・`project`パラメータを持つことを検証し、全ケースで期待通りの動作を確認済み。
 
+### 5.2 プロジェクト切替メニューの表示位置改良（Task #5・実装済み）
+
+- **不具合の原因**: `#collab-switch-menu`（プロジェクト切替のドロップアップメニュー）は、PC版のステータスバー最下段に表示される`#collab-switch-btn`の`getBoundingClientRect()`を基準に位置（`left`）を計算し、`position:fixed; bottom:28px`で下部に貼り付ける実装になっていた。モバイル版では下部ステータスバー自体が`display:none`（機能はハンバーガーメニュー内の`#mobileMenuSwitchBtn`から`proxyClick()`経由で委譲）のため、`switchBtn`の座標がほぼ0（画面左下端相当）になり、メニューが画面左下端に貼り付いて表示される不具合となっていた。
+- **対応方針【確定・A案】**: 通知パネル（`#notif-panel`/`#notif-overlay`）と全く同じUXに統一する。モバイル版（`_isMobilePage===true`）では、画面全体を暗くする背景オーバーレイ`#collab-switch-overlay`（`position:fixed; inset:0; background:rgba(0,0,0,0.55); z-index:100000`）を新設し、`#collab-switch-menu`自体も`position:fixed; left:50%; top:50%; transform:translate(-50%,-50%)`による画面中央固定表示に変更した（`z-index:100001`は変更なし）。オーバーレイの背景部分をクリックするとメニューが閉じる（通知パネルと同じ挙動）。PC版（`_isMobilePage===false`）は、`switchOverlay`自体を生成せず、既存の位置計算ロジック（`switchBtn.getBoundingClientRect()` + `bottom:28px`の左下ドロップアップ）を1バイトも変更していない。ユーザーは提示した2案（A案：オーバーレイ＋中央表示／B案：中央表示のみ・オーバーレイなし・既存の外側クリックのみで閉じる）のうち「A案でお願いします．」と承認（2026-08-11）。
+- **修正箇所**: `collab/collab-client.js`の「プロジェクト切替ボタン＆ドロップアップメニュー」ブロック（約1442〜1663行目）のみ。
+  - `switchOverlay`変数を追加し、`_isMobilePage`の場合のみ生成・`document.body`に追加。
+  - `switchMenu.style`の`Object.assign()`を`_isMobilePage`の三項分岐に変更。モバイル分岐は中央固定表示用のプロパティ（`left/top/transform/borderRadius/width/maxHeight/boxShadow`）に変更し、それ以外（`background/border/overflowY/zIndex/padding/fontFamily/fontSize/pointerEvents`）は無変更。デスクトップ分岐は元の実装とバイト単位で同一。
+  - `openMenu()`：モバイルの場合は`switchOverlay.style.display = 'block'`を追加するのみ（位置計算は不要、CSSの中央固定表示に任せる）。デスクトップの場合は元の`switchBtn.getBoundingClientRect()`による`left`計算をそのまま維持。
+  - `closeMenu()`：`switchOverlay`が存在する場合は`display = 'none'`にする一行を追加。
+  - `switchOverlay`へのクリックリスナーを新設（クリック対象がオーバーレイ自身の場合のみ`closeMenu()`）。既存の「メニュー外クリックで閉じる」`document`リスナーは変更なし（モバイルでは機能的に重複するが、`closeMenu()`は冪等のため問題なし）。
+  - `buildSwitchMenu()`（APIからプロジェクト一覧を取得してメニュー項目を構築する処理）は無変更。
+- **`gantt-mobile.html`側の追加確認**: `proxyClick('mobileMenuSwitchBtn', 'collab-switch-btn');`（約31157行目）は既存のまま変更不要（クリックを`collab-switch-btn`へ委譲するだけで、実際の開閉処理は`collab-client.js`側の`switchBtn.onclick`に委ねられているため）。ハンバーガーメニュー本体`#mobileMenuPanel`（`z-index:100050`）は、新設した`#collab-switch-overlay`（`z-index:100000`）/`#collab-switch-menu`（`z-index:100001`）より上位のz-indexのまま開いた状態が残る（`proxyClick()`が`stopImmediatePropagation()`するため、`#mobileMenuPanel`側の「メニュー項目クリック後に自動的に閉じる」処理は実行されない）。これは既存の通知パネルを開いた場合と全く同一の挙動（Playwrightで実際に確認済み）であり、ユーザーが実施したTask #6の再調査でも「通知パネル表示位置自体は改良する必要はない」と結論済みのため、本Task #5でも同一パターンを踏襲する形で対応不要と判断した。
+- **Playwright検証**: iPhone 13エミュレーションで、ハンバーガーメニュー→「プロジェクト切替」タップ後、`#collab-switch-overlay`が`display:block`・`#collab-switch-menu`が画面中心（誤差40px以内）に表示されることを確認。オーバーレイの背景クリックで両方`display:none`に戻ることを確認。デスクトップ（PC相当のビューポート、`gantt-collab.html`）では`#collab-switch-overlay`要素自体が生成されないこと、メニューの`bottom:28px`・`left`計算値（ボタンの`getBoundingClientRect().left`と一致）が旧実装と完全に同一であることを確認。メニュー内部（ヘッダー等、項目以外の箇所）をクリックしても閉じないこと（既存の「メニュー外クリックのみで閉じる」挙動維持）も確認。全ケースPASS。
+
 ---
 
 ## 6. 実装時の注意点（開発ルール遵守）
@@ -153,7 +167,7 @@ webapp/
   - 【途中経緯】初回実装時はユーザー指示の「右ペインの日付エリア」を下部のタイムライングリッド（空白部分）と解釈し、`ui.timelineScroller`に対して`.task-bar`/依存線を除外する`handleTimelineDoubleClick`を実装したが、後日ユーザーより「日付エリアとは上部の日付・曜日・年が表示されている部分（ヘッダー）を指していた」との訂正があり、対象要素を`ui.timelineHeader`に変更し、除外処理も不要な形に修正した。
   - この方式はユーザー確認済み（2026-08-11、設計提案を提示し「提案の内容で進めてください」と承認、その後「右ペインの日付エリア」の解釈違いについて訂正・再承認）。
 - `collab-client.js` の `#collab-status-bar` をモバイルでどう扱うか（そのまま使う/レイアウトだけ調整/機能を統合メニューに完全移管する）は実装の中で調整しながら進める。
-- 【実装後の既知の改善課題】「プロジェクト切替」ドロップアップ（`#collab-switch-menu`）は、元々画面下部のステータスバー基準（`bottom`固定）で位置計算されているため、モバイル版で上部の統合メニューから開くと画面左下に表示される。動作自体は問題なく成功しているが、表示位置を画面中央などに改良する対応は今後のタイミングで実施する（ユーザー確認済み・優先度は低、後回しでよいとの合意あり）。同様に通知パネルの位置も要確認。
+- 【確定・実装済み(Task #5)】「プロジェクト切替」ドロップアップ（`#collab-switch-menu`）が、モバイル版で画面左下に表示されてしまう不具合を、通知パネルと同じ「オーバーレイ＋画面中央固定表示」（A案）に統一して解消した。詳細は5.2節参照。なお、通知パネル自体の表示位置はユーザーの再調査により問題なしと確認済み（Task #6・対応不要でクローズ）。
 - 【依存線作成（右ドラッグの代替）の実装方式・確定】タッチデバイスに右クリック/右ドラッグは存在しないため、タスクバーの**長押し**を起点に、PC版の「右ボタン押下→分岐」と同じ構造を再現する方式で実装した（`gantt-mobile.html`のみに追加、`gantt-collab.html`は無変更）。
   - タスクバーを約450ms押し続けると（`MOBILE_LONG_PRESS_MS`）、PC版の`beginDependencyDraft()`を直接呼び出し、右ボタン押下時と同じ内部状態（`interaction.mode = 'link-pending'`）に入る。長押し確定時は`navigator.vibrate()`が使える端末では軽いバイブレーションでフィードバックする。
   - 長押しがそのまま確定し、指を動かさずに離すと、ブラウザが合成する`contextmenu`イベント経由で既存の`#contextMenu`（階層操作メニュー）が表示される（コード変更なしで動作する仕組みを流用）。

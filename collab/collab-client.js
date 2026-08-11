@@ -1446,10 +1446,49 @@
       switchBtn.textContent = 'プロジェクト切替 ▾';
       applyBtnStyle(switchBtn, '#a5d6a7', 'rgba(165,214,167,0.45)');
 
+      // [Mobile] モバイル版では下部ステータスバー自体が非表示のため、
+      // switchBtn.getBoundingClientRect() が画面左下端相当の値になり、
+      // メニューがそこに貼り付いて表示されてしまう不具合があった。
+      // 通知パネル(#notif-panel)と同じ「画面中央固定表示＋背景オーバーレイ」に統一する。
+      // PC版（_isMobilePage=false）は既存のドロップアップ表示を変更しない。
+      let switchOverlay = null;
+      if (_isMobilePage) {
+        switchOverlay = document.createElement('div');
+        switchOverlay.id = 'collab-switch-overlay';
+        Object.assign(switchOverlay.style, {
+          display:    'none',
+          position:   'fixed',
+          inset:      '0',
+          background: 'rgba(0,0,0,0.55)',
+          zIndex:     '100000',
+        });
+        document.body.appendChild(switchOverlay);
+      }
+
       // ドロップアップメニュー本体
       const switchMenu = document.createElement('div');
       switchMenu.id = 'collab-switch-menu';
-      Object.assign(switchMenu.style, {
+      Object.assign(switchMenu.style, _isMobilePage ? {
+        // [Mobile] 通知パネルと同じ中央固定表示
+        display:        'none',
+        position:       'fixed',
+        left:           '50%',
+        top:            '50%',
+        transform:      'translate(-50%, -50%)',
+        background:     '#1e1e2e',
+        border:         '1px solid rgba(165,214,167,0.40)',
+        borderRadius:   '10px',
+        minWidth:       '200px',
+        width:          'min(320px, 90vw)',
+        maxHeight:      'min(400px, 80vh)',
+        overflowY:      'auto',
+        zIndex:         '100001',
+        boxShadow:      '0 8px 40px rgba(0,0,0,0.7)',
+        padding:        '4px 0',
+        fontFamily:     'monospace',
+        fontSize:       '12px',
+        pointerEvents:  'none',   // 非表示時はクリックを透過させる
+      } : {
         display:        'none',
         position:       'fixed',
         bottom:         '28px',      // ステータスバーの上に展開
@@ -1578,8 +1617,13 @@
       // メニュー開閉共通処理
       let menuOpen = false;
       function openMenu() {
-        const rect = switchBtn.getBoundingClientRect();
-        switchMenu.style.left = rect.left + 'px';
+        if (_isMobilePage) {
+          // [Mobile] 中央固定表示のため位置計算は不要。オーバーレイも表示する。
+          if (switchOverlay) switchOverlay.style.display = 'block';
+        } else {
+          const rect = switchBtn.getBoundingClientRect();
+          switchMenu.style.left = rect.left + 'px';
+        }
         switchMenu.style.display = 'block';
         switchMenu.style.pointerEvents = 'auto';  // 表示時はクリックを有効化
         menuOpen = true;
@@ -1588,6 +1632,7 @@
       function closeMenu() {
         switchMenu.style.display = 'none';
         switchMenu.style.pointerEvents = 'none';  // 非表示時はクリックを透過
+        if (switchOverlay) switchOverlay.style.display = 'none';
         menuOpen = false;
       }
 
@@ -1596,6 +1641,16 @@
         e.stopPropagation();
         if (menuOpen) { closeMenu(); } else { openMenu(); }
       };
+
+      // [Mobile] オーバーレイ自体のクリック（メニュー外の暗い部分）で閉じる
+      // （通知パネルと同じ挙動。document側の「メニュー外クリック」判定でも
+      //  閉じられるため、こちらは無くても機能面は同じだが、通知パネルと
+      //  実装を揃えて挙動の一貫性を明示するために追加する）
+      if (switchOverlay) {
+        switchOverlay.addEventListener('click', function (e) {
+          if (e.target === switchOverlay) closeMenu();
+        });
+      }
 
       // メニュー外クリックで閉じる（capture:falseでバブルアップのみ受ける）
       document.addEventListener('click', function (e) {
