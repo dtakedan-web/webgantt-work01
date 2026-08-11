@@ -19656,12 +19656,20 @@ ${appendText}` : appendText;
       // 場合や、モードが既に確定した移動/リサイズ等へ遷移している場合は発火しない。
       if (interaction.mode && interaction.pointerId !== event.pointerId) return;
       if (interaction.mode && interaction.mode !== 'move-pending' && interaction.mode !== 'resize-start-pending' && interaction.mode !== 'resize-end-pending') return;
-      mobileLongPress.fired = true;
       if (navigator.vibrate) { try { navigator.vibrate(15); } catch (e) {} }
       // beginTaskManipulation()が設定したmove/resize待機用の状態(originalTask等)を
       // クリアしてから依存線ドラフトモードへ切り替える(clearInteraction()はロック解放も
       // 行うが、直後にbeginDependencyDraft側で同じtaskIdのロックを再要求するため問題ない)。
+      // 注意: clearInteraction()は内部でclearMobileLongPressTimer()を呼び出し、
+      // mobileLongPress.fired/pointerId/taskId/barを全てリセットしてしまうため、
+      // pointerup側で「長押しが確定していたか」を判定できるよう、clearInteraction()
+      // 実行後に改めて必要な値を設定し直す(先にfired=trueを立ててもここでリセット
+      // されてしまい、階層メニューが一切表示されなくなる不具合の原因になっていた)。
       clearInteraction();
+      mobileLongPress.fired = true;
+      mobileLongPress.pointerId = event.pointerId;
+      mobileLongPress.taskId = taskId;
+      mobileLongPress.bar = bar;
       beginDependencyDraft(event, taskId);
     }, MOBILE_LONG_PRESS_MS);
   }
