@@ -75,7 +75,7 @@ body { overflow: hidden; }
 button, input, select, textarea { font: inherit; }
 [hidden] { display: none !important; }
 
-.app-shell { height: 100vh; display: flex; flex-direction: column; }
+.app-shell { height: 100vh; height: 100dvh; display: flex; flex-direction: column; }
 
 .topbar,
 .toolbar {
@@ -657,7 +657,17 @@ body.is-pane-resizing * {
   min-height: 0;
   position: relative;
   flex: 1 1 auto;
-
+  /* モバイル: 左ペイン(タスク名一覧)は本来 overflow-y: hidden で自身は
+     縦スクロールしないが、touch-action指定が無いと空白領域への縦方向の
+     指の動きがブラウザ標準のページジェスチャー(アドレスバー開閉等の
+     ビューポート変化を伴うもの)として扱われ、結果的に右ペイン
+     (.timeline-scroller)側のスクロール可能量計算が乱れる不具合が実機で
+     確認された(ピンチズームで一時的に直ることからも、ビューポート/
+     レイアウト再計算に起因する副作用と判断)。横方向のネイティブスクロール
+     (タスク名列が折りたたまれていない場合の横スクロール)は維持しつつ、
+     縦方向のネイティブジェスチャーは無効化し、独自の縦スクロールドラッグ
+     (下記 handleLeftBodyPointerDown/Move/Up)に完全に委ねる。 */
+  touch-action: pan-x;
 }
 .left-row {
   height: var(--row-height);
@@ -5713,8 +5723,14 @@ body.is-pane-resizing * {
 #mobileMenuPanel .mobile-menu-item[disabled] { opacity: 0.4; }
 
 /* app-shell の高さ計算をモバイル1段ツールバーに合わせて上書き */
+/* モバイル: 100vh はモバイルブラウザのアドレスバー表示/非表示で実際の値が
+   変動する既知の問題があり、これが縦スワイプ操作と絡んで.timeline-scroller
+   のスクロール可能量計算を乱す一因になっていた。100dvh(dynamic viewport
+   height、対応ブラウザではアドレスバーの状態を反映した実際の表示高さ)を
+   優先して使用することで安定させる(非対応ブラウザは100vhにフォールバック)。*/
 .app-shell {
   height: 100vh !important;
+  height: 100dvh !important;
 }
 /* モバイルには物理キーボードが無いため、右クリックメニュー相当（長押し
    メニュー）内のキーボードショートカット表示は無意味な上、項目によって
@@ -8333,6 +8349,17 @@ body.is-pane-resizing * {
     offsetDays: 0,
     moved: false,
     linkDraft: null
+  };
+
+  // モバイル: 左ペイン(タスク名一覧, .left-body)の縦スクロールをJSで駆動する
+  // ための状態。.timeline-scroller側の interaction.mode 'scroll-drag' と同じ
+  // 考え方だが、左ペインには「作成」に相当する操作が無いため専用の軽量な
+  // 状態オブジェクトを別途持つ（handleLeftBodyPointerDown/Move/Up で使用）。
+  const leftScrollDrag = {
+    pointerId: null,
+    startClientY: 0,
+    startScrollTop: 0,
+    dragging: false // DRAG_THRESHOLDを超えて縦スクロールモードに確定したか
   };
 
   let suppressContextMenuUntil = 0;
@@ -20135,6 +20162,57 @@ ${appendText}` : appendText;
     setHoveredRow(rowEl.dataset.rowId);
   }
 
+  // モバイル: 左ペイン(.left-body)の空白領域やタスク行を指でドラッグした際に、
+  // 右ペイン(.timeline-scroller)と同じ「JS駆動の縦スクロール」を行う。
+  // マウス操作（デスクトップの行ドラッグ&ドロップ = onHandleMouseDown）とは
+  // 完全に独立させるため、pointerType==='mouse' の場合は何もしない。
+  function _suppressNextLeftScrollClick(event) {
+    event.stopPropagation();
+    document.removeEventListener('click', _suppressNextLeftScrollClick, true);
+  }
+
+  function handleLeftBodyPointerDown(event) {
+    if (event.pointerType === 'mouse') return;
+    if (!ui.timelineScroller || !ui.leftBody) return;
+    // フォーム要素・インライン編集中のテキストボックス・行ドラッグハンドルは
+    // 従来の挙動（テキスト選択／行並び替え）を優先し、ここでは何もしない。
+    if (event.target.closest('input, select, textarea, .task-title-input, .row-drag-handle')) return;
+    if (leftScrollDrag.pointerId !== null) return;
+    leftScrollDrag.pointerId = event.pointerId;
+    leftScrollDrag.startClientY = event.clientY;
+    leftScrollDrag.startScrollTop = ui.timelineScroller.scrollTop;
+    leftScrollDrag.dragging = false;
+  }
+
+  function handleLeftBodyPointerMove(event) {
+    if (leftScrollDrag.pointerId !== event.pointerId) return;
+    const deltaY = event.clientY - leftScrollDrag.startClientY;
+    if (!leftScrollDrag.dragging) {
+      if (Math.abs(deltaY) < DRAG_THRESHOLD) return;
+      leftScrollDrag.dragging = true;
+      // 合成イベント等でアクティブポインタが認識されないケースでも例外で
+      // 処理が止まらないようtry/catchで保護する（機能的には無くても動作可）。
+      try { ui.leftBody.setPointerCapture?.(event.pointerId); } catch (_) { /* noop */ }
+      // ドラッグ確定後に発火し得る意図しない click（タスク選択・ボタン操作等）を
+      // 1回だけ抑止する（行ドラッグ&ドロップの _suppressNextClick と同じ狙い）。
+      document.addEventListener('click', _suppressNextLeftScrollClick, true);
+    }
+    event.preventDefault();
+    const maxScrollTop = Math.max(0, ui.timelineScroller.scrollHeight - ui.timelineScroller.clientHeight);
+    const nextScrollTop = clamp(leftScrollDrag.startScrollTop - deltaY, 0, maxScrollTop);
+    ui.timelineScroller.scrollTop = nextScrollTop;
+    syncHeaders();
+  }
+
+  function handleLeftBodyPointerUp(event) {
+    if (leftScrollDrag.pointerId !== event.pointerId) return;
+    if (leftScrollDrag.dragging) {
+      try { ui.leftBody.releasePointerCapture?.(event.pointerId); } catch (_) { /* noop */ }
+    }
+    leftScrollDrag.pointerId = null;
+    leftScrollDrag.dragging = false;
+  }
+
   function handleTimelineMouseMove(event) {
     const point = getContentPoint(event);
     const hover = getHoverTargetAtContentY(point.y);
@@ -24999,6 +25077,12 @@ ${appendText}` : appendText;
     ui.leftBody.addEventListener('contextmenu', handleLeftContextMenu);
     ui.leftBody.addEventListener('scroll', syncLeftPaneHorizontalScroll);
     ui.leftBody.addEventListener('wheel', handleLeftPaneWheel, { passive: false });
+    // モバイル: 左ペインのタッチ縦スクロールをJS駆動にするための独自ハンドラ
+    // （マウス操作には反応しない。行ドラッグ&ドロップ用の mousedown とは独立）
+    ui.leftBody.addEventListener('pointerdown', handleLeftBodyPointerDown);
+    ui.leftBody.addEventListener('pointermove', handleLeftBodyPointerMove);
+    ui.leftBody.addEventListener('pointerup', handleLeftBodyPointerUp);
+    ui.leftBody.addEventListener('pointercancel', handleLeftBodyPointerUp);
 
     // ステータス列クリックでドロップダウンを開く
     ui.leftBody.addEventListener('click', (event) => {
