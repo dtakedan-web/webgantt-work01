@@ -20095,13 +20095,10 @@ ${appendText}` : appendText;
     }
   }
 
-  // モバイル: 右ペイン空白部分のダブルタップで「今日」付近へスクロールする
-  // (削除した#todayBtnの代替)。タスクバー・依存線など、既に個別のdblclick
-  // ハンドラを持つ要素の上でのダブルタップはここでは処理しない。
-  function handleTimelineDoubleClick(event) {
+  // モバイル: タイムライン上部の日付ヘッダー(月/日表示部分)のダブルタップで
+  // 「今日」付近へスクロールする(削除した#todayBtnの代替)。
+  function handleTimelineHeaderDoubleClick(event) {
     if (!isTimelineDirectManipulationEnabled()) return;
-    if (event.target.closest?.('.task-bar')) return;
-    if (getDependencyIdFromEvent(event)) return;
     scrollTodayIntoView(true);
   }
 
@@ -24889,6 +24886,9 @@ ${appendText}` : appendText;
     ui.timelineHeader?.addEventListener('pointermove', handleTimelineHeaderPointerMove);
     ui.timelineHeader?.addEventListener('pointerup', handleTimelineHeaderPointerUp);
     ui.timelineHeader?.addEventListener('pointercancel', handleTimelineHeaderPointerCancel);
+    // モバイル: 「今日」ボタンは廃止し、タイムライン上部の日付ヘッダー(月/日表示部分)の
+    // ダブルタップで scrollTodayIntoView() を呼ぶ方式に置き換える。
+    ui.timelineHeader?.addEventListener('dblclick', handleTimelineHeaderDoubleClick);
     window.addEventListener('resize', () => {
       applyLeftPaneWidth();
       updatePlaceholderAddButtonLayout();
@@ -25757,9 +25757,6 @@ ${appendText}` : appendText;
     ui.prevDayBtn.addEventListener('click', () => moveViewBy(-1));
     ui.nextBtn.addEventListener('click', () => moveViewBy(getTimelinePrimaryStepSize()));
     ui.nextDayBtn.addEventListener('click', () => moveViewBy(1));
-    // モバイル: 「今日」ボタンは廃止し、右ペイン空白部分のダブルタップで
-    // scrollTodayIntoView() を呼ぶ方式に置き換える(handleTimelineDoubleClick参照)。
-    ui.timelineScroller.addEventListener('dblclick', handleTimelineDoubleClick);
     if (ui.yearViewBtn) ui.yearViewBtn.addEventListener('click', () => setViewScale('year'));
     if (ui.monthViewBtn) ui.monthViewBtn.addEventListener('click', () => setViewScale('month'));
     if (ui.weekViewBtn) ui.weekViewBtn.addEventListener('click', () => setViewScale('week'));
