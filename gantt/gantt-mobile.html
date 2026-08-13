@@ -31154,8 +31154,17 @@ ${appendText}` : appendText;
     proxyClick('mobileMenuSettingsBtn', 'settingsBtn');
     proxyClick('mobileMenuAccountBtn', 'collab-account-btn');
     proxyClick('mobileMenuProjectBtn', 'collab-project-btn');
-    proxyClick('mobileMenuSwitchBtn', 'collab-switch-btn');
-    proxyClick('mobileMenuNotifBtn', 'notif-bell-btn');
+    // 「プロジェクト切替」「通知」は、事前に開いている統合メニュー
+    // (#mobileMenuPanel)が背後に残ると見た目が乱れるため、実際の
+    // クリック委譲(setTimeout)より前に同期的に閉じておく。
+    proxyClick('mobileMenuSwitchBtn', 'collab-switch-btn', function () {
+      var panel = document.getElementById('mobileMenuPanel');
+      if (panel) panel.hidden = true;
+    });
+    proxyClick('mobileMenuNotifBtn', 'notif-bell-btn', function () {
+      var panel = document.getElementById('mobileMenuPanel');
+      if (panel) panel.hidden = true;
+    });
     proxyClick('mobileMenuLogoutBtn', 'collab-logout-btn');
 
     // 統合メニューの開閉

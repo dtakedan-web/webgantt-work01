@@ -137,6 +137,15 @@ webapp/
 - **`gantt-mobile.html`側の追加確認**: `proxyClick('mobileMenuSwitchBtn', 'collab-switch-btn');`（約31157行目）は既存のまま変更不要（クリックを`collab-switch-btn`へ委譲するだけで、実際の開閉処理は`collab-client.js`側の`switchBtn.onclick`に委ねられているため）。ハンバーガーメニュー本体`#mobileMenuPanel`（`z-index:100050`）は、新設した`#collab-switch-overlay`（`z-index:100000`）/`#collab-switch-menu`（`z-index:100001`）より上位のz-indexのまま開いた状態が残る（`proxyClick()`が`stopImmediatePropagation()`するため、`#mobileMenuPanel`側の「メニュー項目クリック後に自動的に閉じる」処理は実行されない）。これは既存の通知パネルを開いた場合と全く同一の挙動（Playwrightで実際に確認済み）であり、ユーザーが実施したTask #6の再調査でも「通知パネル表示位置自体は改良する必要はない」と結論済みのため、本Task #5でも同一パターンを踏襲する形で対応不要と判断した。
 - **Playwright検証**: iPhone 13エミュレーションで、ハンバーガーメニュー→「プロジェクト切替」タップ後、`#collab-switch-overlay`が`display:block`・`#collab-switch-menu`が画面中心（誤差40px以内）に表示されることを確認。オーバーレイの背景クリックで両方`display:none`に戻ることを確認。デスクトップ（PC相当のビューポート、`gantt-collab.html`）では`#collab-switch-overlay`要素自体が生成されないこと、メニューの`bottom:28px`・`left`計算値（ボタンの`getBoundingClientRect().left`と一致）が旧実装と完全に同一であることを確認。メニュー内部（ヘッダー等、項目以外の箇所）をクリックしても閉じないこと（既存の「メニュー外クリックのみで閉じる」挙動維持）も確認。全ケースPASS。
 
+### 5.3 「プロジェクト切替」「通知」タップ時の統合メニュー(#mobileMenuPanel)自動クローズ(Task #5追加要望・実装済み)
+
+- **要望内容**: 5.2節の対応で「プロジェクト切替」メニューの表示位置自体は改良されたが、統合メニュー(ハンバーガーメニュー、`#mobileMenuPanel`、`z-index:100050`)を開いた状態のままメニュー項目「プロジェクト切替」または「通知」をタップした場合、5.2節の説明にある通り`proxyClick()`が`stopImmediatePropagation()`するため`#mobileMenuPanel`側の「メニュー項目クリック後に自動的に閉じる」処理が実行されず、`#mobileMenuPanel`がより上位のz-indexのまま背後に開いたまま残ってしまう。ユーザーから、この2項目については目的のウィンドウメニュー(プロジェクト切替の`#collab-switch-menu`／通知の`#notif-panel`)を表示する前に、事前に統合メニューを閉じるよう追加要望があった。
+- **対応方針(承認済み)**: `gantt/gantt-mobile.html`の`wire()`関数内、`proxyClick('mobileMenuSwitchBtn', 'collab-switch-btn')`と`proxyClick('mobileMenuNotifBtn', 'notif-bell-btn')`の2箇所のみ、`proxyClick()`の第3引数`beforeDelegate`（実際のクリック委譲(`setTimeout`)より前に同期的に実行される処理）を渡し、その中で`document.getElementById('mobileMenuPanel').hidden = true`を実行するように変更した。`beforeDelegate`は実際のクリック委譲より前に同期的に実行されるため、「統合メニューを閉じる → 目的のウィンドウメニューを開く」の順序を保証できる。
+- **修正箇所**: `gantt/gantt-mobile.html`の`wire()`関数内のみ（約31157〜31167行目）。`collab/collab-client.js`・PC版(`gantt-collab.html`)・`#settingsPopover`には一切触れていない。
+- **対象外の項目**: `mobileMenuSettingsBtn`(ユーザー設定=`#settingsPopover`)、`mobileMenuAccountBtn`、`mobileMenuProjectBtn`、`mobileMenuLogoutBtn`は、クリック後にページ遷移またはポップアップ表示に切り替わるため、統合メニューが背後に残っても実害がなく、ユーザー要望通り今回の修正対象外とした（`#mobileMenuPanel`は開いたままだが、遷移先ページ表示または`#settingsPopover`表示の前面に隠れるため実際の見た目上の問題はない。Playwrightでも実際に既存動作(`#settingsPopover`が正しく開くこと)に変化がないことを確認済み）。
+- **Playwright検証**: iPhone 13エミュレーションで、(1)ハンバーガーメニューを開いた状態で「プロジェクト切替」をタップ →`#mobileMenuPanel.hidden`が`true`になり、`#collab-switch-menu`が`display:block`で画面中央に表示されることを確認。(2)同様に「通知」をタップ →`#mobileMenuPanel.hidden`が`true`になり、`#notif-overlay`が`display:block`で通知パネルが表示されることを確認。(3)ページをリロードし、ハンバーガーメニューを開いた状態で「ユーザー設定」をタップ →`#settingsPopover.hidden`が`false`（正しく開く）ことを確認し、この項目については既存動作に変化がないことも確認。3ケースともJSエラーなくPASS。
+- この方式はユーザー確認済み（2026-08-13、設計方針を提示し承認を受けて実装）。
+
 ---
 
 ## 6. 実装時の注意点（開発ルール遵守）
@@ -168,6 +177,7 @@ webapp/
   - この方式はユーザー確認済み（2026-08-11、設計提案を提示し「提案の内容で進めてください」と承認、その後「右ペインの日付エリア」の解釈違いについて訂正・再承認）。
 - `collab-client.js` の `#collab-status-bar` をモバイルでどう扱うか（そのまま使う/レイアウトだけ調整/機能を統合メニューに完全移管する）は実装の中で調整しながら進める。
 - 【確定・実装済み(Task #5)】「プロジェクト切替」ドロップアップ（`#collab-switch-menu`）が、モバイル版で画面左下に表示されてしまう不具合を、通知パネルと同じ「オーバーレイ＋画面中央固定表示」（A案）に統一して解消した。詳細は5.2節参照。なお、通知パネル自体の表示位置はユーザーの再調査により問題なしと確認済み（Task #6・対応不要でクローズ）。
+- 【確定・実装済み(Task #5追加要望)】「プロジェクト切替」「通知」タップ時に統合メニュー(`#mobileMenuPanel`)が背後に開いたまま残る点について、`gantt/gantt-mobile.html`の`wire()`関数内の該当2箇所のみ、`proxyClick()`の`beforeDelegate`経由で事前にパネルを閉じるように対応した。詳細は5.3節参照。
 - 【依存線作成（右ドラッグの代替）の実装方式・確定】タッチデバイスに右クリック/右ドラッグは存在しないため、タスクバーの**長押し**を起点に、PC版の「右ボタン押下→分岐」と同じ構造を再現する方式で実装した（`gantt-mobile.html`のみに追加、`gantt-collab.html`は無変更）。
   - タスクバーを約450ms押し続けると（`MOBILE_LONG_PRESS_MS`）、PC版の`beginDependencyDraft()`を直接呼び出し、右ボタン押下時と同じ内部状態（`interaction.mode = 'link-pending'`）に入る。長押し確定時は`navigator.vibrate()`が使える端末では軽いバイブレーションでフィードバックする。
   - 長押しがそのまま確定し、指を動かさずに離すと、ブラウザが合成する`contextmenu`イベント経由で既存の`#contextMenu`（階層操作メニュー）が表示される（コード変更なしで動作する仕組みを流用）。
