@@ -1288,6 +1288,16 @@
     let userEl     = null;  // Phase 2-A: ユーザー名表示
     let logoutBtn  = null;  // Phase 2-A: ログアウトボタン
     let myColor    = '#1E88E5';
+    // [Mobile] init()内で判定した値をrenderPresence()等の他の関数からも
+    // 参照できるよう、IIFEのトップレベル変数として保持する（init()内の
+    // ローカル変数 _isMobilePage とは別名にして、既存のinit()内ロジックは
+    // 一切変更しない）。
+    let _isMobilePageTop = false;
+    // [Mobile] 「接続者」一覧メニュー（#collab-presence-menu）関連。
+    // PC版には存在しないモバイル専用コンポーネントで、renderPresence()から
+    // 最新の接続者リストを保持・メニュー内容の再構築を行うために使う。
+    let _presenceUsers = [];
+    let _refreshPresenceMenuIfOpen = null;
 
     // 背景色に対して最も視認性の高い文字色を返すヘルパー（WCAG相対輝度）
     function calcTextColor(hex) {
@@ -1306,6 +1316,10 @@
       // 統合メニューに集約するため、通常のレイアウト調整は行わず、
       // ステータスバー自体は非表示にする（要素は残し、機能は再利用する）。
       const _isMobilePage = Boolean(window.__GANTT_MOBILE__);
+      // IIFEトップレベルの変数(_isMobilePage)にも反映し、renderPresence()等の
+      // 他の関数から参照できるようにする（このローカル変数自体は以下、init()内
+      // で従来通り使用を継続する。ロジック変更はない）。
+      _isMobilePageTop = _isMobilePage;
 
       if (!_isMobilePage) {
         const adjustStyle = document.createElement('style');
@@ -1663,6 +1677,151 @@
       document.body.appendChild(switchMenu);
       // ────────────────────────────────────────────────────────────
 
+      // ─── [Mobile専用] 接続者一覧ボタン ＆ ウィンドウメニュー ───────────
+      // PC版のステータスバー上の■表示（renderPresence()、カーソルを乗せると
+      // 氏名がtitle属性でツールチップ表示される）には対応するクリック可能な
+      // ボタンが存在しないため、モバイル版の統合メニュー(#mobileMenuPresenceBtn)
+      // からの委譲先として、非表示の実ボタン(#collab-presence-btn)を新設する。
+      // ウィンドウメニュー自体は5.2節の「プロジェクト切替」メニューと全く同じ
+      // 見た目・構造（画面中央固定表示＋暗転オーバーレイ）で実装する。
+      // PC版（_isMobilePage=false）ではこのブロック自体を生成しないため、
+      // PC版の見た目・動作への影響は一切ない。
+      let presenceBtn = null;
+      if (_isMobilePage) {
+        presenceBtn = document.createElement('a');
+        presenceBtn.id = 'collab-presence-btn';
+        presenceBtn.href = '#';
+        presenceBtn.style.display = 'none';  // モバイル統合メニューからのみ使う非表示の委譲先
+
+        const presenceOverlay = document.createElement('div');
+        presenceOverlay.id = 'collab-presence-overlay';
+        Object.assign(presenceOverlay.style, {
+          display:    'none',
+          position:   'fixed',
+          inset:      '0',
+          background: 'rgba(0,0,0,0.55)',
+          zIndex:     '100000',
+        });
+        document.body.appendChild(presenceOverlay);
+
+        const presenceMenu = document.createElement('div');
+        presenceMenu.id = 'collab-presence-menu';
+        Object.assign(presenceMenu.style, {
+          display:        'none',
+          position:       'fixed',
+          left:           '50%',
+          top:            '50%',
+          transform:      'translate(-50%, -50%)',
+          background:     '#1e1e2e',
+          border:         '1px solid rgba(165,214,167,0.40)',
+          borderRadius:   '10px',
+          minWidth:       '200px',
+          width:          'min(320px, 90vw)',
+          maxHeight:      'min(400px, 80vh)',
+          overflowY:      'auto',
+          zIndex:         '100001',
+          boxShadow:      '0 8px 40px rgba(0,0,0,0.7)',
+          padding:        '4px 0',
+          fontFamily:     'monospace',
+          fontSize:       '12px',
+          pointerEvents:  'none',   // 非表示時はクリックを透過させる
+        });
+
+        const presenceMenuHeader = document.createElement('div');
+        presenceMenuHeader.id = 'collab-presence-menu-header';
+        Object.assign(presenceMenuHeader.style, {
+          padding:     '5px 12px 4px',
+          color:       '#888',
+          fontSize:    '10px',
+          borderBottom:'1px solid rgba(255,255,255,0.08)',
+          marginBottom:'2px',
+          userSelect:  'none',
+        });
+        presenceMenu.appendChild(presenceMenuHeader);
+
+        // 接続者一覧（_presenceUsers、renderPresence()経由で常に最新化される）を
+        // メニュー本体に反映する。ヘッダー行の「接続者(*人)」表示も併せて更新する。
+        function renderPresenceMenuItems() {
+          presenceMenuHeader.textContent = `接続者(${_presenceUsers.length}人)`;
+          while (presenceMenu.children.length > 1) {
+            presenceMenu.removeChild(presenceMenu.lastChild);
+          }
+          if (_presenceUsers.length === 0) {
+            const empty = document.createElement('div');
+            empty.textContent = '接続者がいません';
+            Object.assign(empty.style, { padding: '8px 12px', color: '#888' });
+            presenceMenu.appendChild(empty);
+            return;
+          }
+          _presenceUsers.forEach((u) => {
+            const item = document.createElement('div');
+            Object.assign(item.style, {
+              display:    'flex',
+              alignItems: 'center',
+              gap:        '8px',
+              padding:    '6px 12px',
+            });
+            const swatch = document.createElement('span');
+            Object.assign(swatch.style, {
+              display:      'inline-block',
+              width:        '14px',
+              height:       '14px',
+              borderRadius: '3px',
+              background:   u.color || '#888',
+              border:       '1.5px solid #fff',
+              flexShrink:   '0',
+            });
+            const nameSpan = document.createElement('span');
+            nameSpan.textContent = u.displayName || u.userId;
+            nameSpan.style.color = '#ccc';
+            nameSpan.style.overflow = 'hidden';
+            nameSpan.style.textOverflow = 'ellipsis';
+            nameSpan.style.whiteSpace = 'nowrap';
+            item.appendChild(swatch);
+            item.appendChild(nameSpan);
+            presenceMenu.appendChild(item);
+          });
+        }
+        // renderPresence()から呼び出せるよう、IIFEトップレベル変数に登録する。
+        _refreshPresenceMenuIfOpen = renderPresenceMenuItems;
+
+        let presenceMenuOpen = false;
+        function openPresenceMenu() {
+          presenceOverlay.style.display = 'block';
+          presenceMenu.style.display = 'block';
+          presenceMenu.style.pointerEvents = 'auto';
+          presenceMenuOpen = true;
+          renderPresenceMenuItems();
+        }
+        function closePresenceMenu() {
+          presenceMenu.style.display = 'none';
+          presenceMenu.style.pointerEvents = 'none';
+          presenceOverlay.style.display = 'none';
+          presenceMenuOpen = false;
+        }
+        presenceBtn.onclick = function (e) {
+          e.preventDefault();
+          e.stopPropagation();
+          if (presenceMenuOpen) { closePresenceMenu(); } else { openPresenceMenu(); }
+        };
+        // オーバーレイ自体のクリック（メニュー外の暗い部分）で閉じる
+        // （プロジェクト切替・通知パネルと同じ挙動）
+        presenceOverlay.addEventListener('click', function (e) {
+          if (e.target === presenceOverlay) closePresenceMenu();
+        });
+        // メニュー外クリックで閉じる（プロジェクト切替メニューと同じ挙動）
+        document.addEventListener('click', function (e) {
+          if (!presenceMenuOpen) return;
+          if (!presenceMenu.contains(e.target) && e.target !== presenceBtn) {
+            closePresenceMenu();
+          }
+        }, false);
+
+        document.body.appendChild(presenceMenu);
+        document.body.appendChild(presenceBtn);
+      }
+      // ────────────────────────────────────────────────────────────
+
       // 表示順: 同期状態 → ユーザー名 → [ログアウト] [アカウント管理] [プロジェクト管理] [プロジェクト切替▾] → (右端)プレゼンス
       statusBar.appendChild(dot);
       statusBar.appendChild(label);
@@ -1722,6 +1881,20 @@
     }
 
     function renderPresence(users) {
+      // [Mobile] 接続者リストは人数・メンバー内容が状況により変動するため、
+      // presence_update受信の都度、IIFEトップレベル変数に最新値を保持しておく。
+      // モバイル用の「接続者(*人)」メニュー項目・ウィンドウメニュー本体は
+      // ここから常に最新の状態を参照する（PC版の既存ロジックには影響しない）。
+      _presenceUsers = users || [];
+      if (_isMobilePageTop) {
+        const presenceMenuBtn = document.getElementById('mobileMenuPresenceBtn');
+        if (presenceMenuBtn) presenceMenuBtn.textContent = `接続者(${_presenceUsers.length}人)`;
+        // メニュー表示中に人数変動があった場合に備え、開いていれば再構築する。
+        if (typeof _refreshPresenceMenuIfOpen === 'function') {
+          const menuEl = document.getElementById('collab-presence-menu');
+          if (menuEl && menuEl.style.display === 'block') _refreshPresenceMenuIfOpen();
+        }
+      }
       if (!presenceEl) return;
       presenceEl.innerHTML = '';
       users.forEach((u) => {

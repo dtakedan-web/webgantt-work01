@@ -146,6 +146,38 @@ webapp/
 - **Playwright検証**: iPhone 13エミュレーションで、(1)ハンバーガーメニューを開いた状態で「プロジェクト切替」をタップ →`#mobileMenuPanel.hidden`が`true`になり、`#collab-switch-menu`が`display:block`で画面中央に表示されることを確認。(2)同様に「通知」をタップ →`#mobileMenuPanel.hidden`が`true`になり、`#notif-overlay`が`display:block`で通知パネルが表示されることを確認。(3)ページをリロードし、ハンバーガーメニューを開いた状態で「ユーザー設定」をタップ →`#settingsPopover.hidden`が`false`（正しく開く）ことを確認し、この項目については既存動作に変化がないことも確認。3ケースともJSエラーなくPASS。
 - この方式はユーザー確認済み（2026-08-13、設計方針を提示し承認を受けて実装）。
 
+### 5.4 ハンバーガーメニューへの「接続者(*人)」項目追加(新規要望・実装済み)
+
+- **要望内容**: PC版はステータスバー右端に接続者を色付き■（`#collab-presence`、カーソルを乗せるとtitle属性で氏名がツールチップ表示される）で表示しているが、モバイル版には対応する表示がない。ユーザーからハンバーガーメニュー（`#mobileMenuPanel`）の「通知」の直下に「接続者(*人)」（*は自分を含む接続人数、接続状況により動的に変化）という項目を追加し、タップすると「プロジェクト切替」メニューと同様の見た目のウィンドウメニューが開き、接続中の全メンバーを縦一列で「■（本人のプレゼンスカラー）＋表示名」の形式で（PC版のようなホバー依存ではなく）常時全員分表示する、という要望があった。ユーザー提示のモックアップ:
+  ```
+  （ハンバーガーメニュー）              （接続者ウィンドウメニュー）
+  ユーザー設定                          接続者(*人)
+  アカウント管理                        ■竹田
+  プロジェクト管理                      ■テスター
+  プロジェクト切替                      ■竹山
+  通知
+  接続者(*人)
+  ログアウト
+  ```
+- **対応方針(4点・承認済み)**: 5.2節の「プロジェクト切替」メニュー（オーバーレイ＋画面中央固定表示のウィンドウメニュー）と全く同じ見た目・構造で実装する4点構成を提示し、ユーザーから「確認しました．1～4について，あなたの提案する内容でOKです．進めてください．」と承認を得た（2026-08-13）。
+  1. `gantt-mobile.html`の`#mobileMenuPanel`に、`#mobileMenuNotifBtn`（通知）と`#mobileMenuLogoutBtn`（ログアウト）の間に`#mobileMenuPresenceBtn`ボタンを新設する。
+  2. PC版のステータスバー上には「接続者」に対応するクリック可能なボタンが存在しない（■表示のみ）ため、`collab-client.js`側に非表示の委譲先ボタン`#collab-presence-btn`を新設し、`wire()`関数内で`proxyClick('mobileMenuPresenceBtn', 'collab-presence-btn', beforeDelegate)`により委譲する（`beforeDelegate`で5.3節と同様に`#mobileMenuPanel`を先に閉じる）。
+  3. `collab-client.js`の`renderPresence(users)`（`presence_update`イベント受信の都度呼ばれる、既存のPC版描画ロジックはそのまま維持）に、モバイル向けの追加処理を`_isMobilePageTop`（IIFEトップレベル変数、`init()`内で判定される`_isMobilePage`をコピーしたもの）でガードして追記する。具体的には`#mobileMenuPresenceBtn`のラベルを`接続者(${人数}人)`に更新し、ウィンドウメニューが開いている最中であれば内容も再構築する。
+  4. ウィンドウメニュー本体`#collab-presence-menu`＋オーバーレイ`#collab-presence-overlay`は、5.2節の`#collab-switch-menu`/`#collab-switch-overlay`と全く同じスタイル（`position:fixed; left/top:50%; transform:translate(-50%,-50%)`＋暗転オーバーレイ、オーバーレイクリック/外側クリックで閉じる）で新設し、`_isMobilePage`の場合のみ生成する（PC版では要素自体が生成されない）。メニュー内の各行はPC版の■のように`title`属性でホバーさせるのではなく、色付き■（`u.color`）＋表示名（`u.displayName || u.userId`）を1行に並べて表示し、全員分を常時表示する。
+- **修正箇所**:
+  - `gantt/gantt-mobile.html`: (a) `#mobileMenuPanel`のHTMLに`<button id="mobileMenuPresenceBtn" type="button" class="mobile-menu-item">接続者</button>`を追加（約5822行目、`#mobileMenuNotifBtn`と`#mobileMenuLogoutBtn`の間）。(b) `wire()`関数内、`mobileMenuNotifBtn`用`proxyClick()`呼び出しの直後に`proxyClick('mobileMenuPresenceBtn', 'collab-presence-btn', function(){ ... #mobileMenuPanelを閉じる ... })`を追加（約31169行目）。
+  - `collab/collab-client.js`: (a) `UI`モジュールのIIFEトップレベルに`_isMobilePageTop`（既定`false`）/`_presenceUsers`（既定`[]`）/`_refreshPresenceMenuIfOpen`（既定`null`）を新設。(b) `init()`内、既存の`const _isMobilePage = Boolean(window.__GANTT_MOBILE__);`の直後に`_isMobilePageTop = _isMobilePage;`を追加（既存のローカル変数`_isMobilePage`自体のその後の使われ方は無変更）。(c) 5.2節の「プロジェクト切替」ドロップアップ生成ブロック（`document.body.appendChild(switchMenu);`）の直後に、`if (_isMobilePage) { ... }`でガードした新規ブロック（約150行）を追加し、`#collab-presence-btn`（非表示の委譲先`<a>`）／`#collab-presence-overlay`／`#collab-presence-menu`（`#collab-presence-menu-header`を含む）を生成し、`renderPresenceMenuItems()`/`openPresenceMenu()`/`closePresenceMenu()`とオーバーレイ・外側クリックの各リスナーを定義する。`renderPresenceMenuItems`は`_refreshPresenceMenuIfOpen`に登録し、他関数（`renderPresence()`）から呼び出せるようにする。(d) `renderPresence(users)`の先頭に`_presenceUsers = users || [];`と、`_isMobilePageTop`でガードした`#mobileMenuPresenceBtn`ラベル更新・メニュー再構築処理を追加。それ以降の既存PC版描画ロジック（`presenceEl`への■生成、人数ラベル`countLabel`）は一切変更していない。
+- **PC版への影響**: `_isMobilePage`（`window.__GANTT_MOBILE__`未設定時は`false`）でガードされているため、`gantt-collab.html`では`#collab-presence-btn`/`#collab-presence-menu`/`#collab-presence-overlay`のいずれも生成されず、既存の`#collab-presence`（■＋ホバーtitle表示）の動作・見た目は完全に無変更。
+- **Playwright検証**: 実サーバー（Socket.IOバックエンド）が存在しないため、`page.addInitScript()`で`window.io`を「`.on(event, handler)`で登録されたハンドラを`window.__capturedHandlers`に捕捉するフェイクsocket」に差し替え、`collab-client.js`の`loadSocketIO()`内`if (window.io) { resolve(window.io); return; }`分岐によりCDN読み込みの代わりにこのスタブが使われるようにした上で、捕捉した`presence_update`ハンドラをテストから直接呼び出す方式で検証した。iPhone 13エミュレーションで以下を確認、全ケースPASS（JSエラーなし）:
+  - 3人分の`presence_update`（竹田/テスター/竹山、モックアップと同じ表示名）受信後、`#mobileMenuPresenceBtn`のテキストが`接続者(3人)`に更新されること。
+  - ハンバーガーメニューを開いた状態で「接続者(3人)」をタップ→`#mobileMenuPanel.hidden`が`true`になり、`#collab-presence-menu`/`#collab-presence-overlay`が`display:block`で画面中央に表示され、ヘッダーが`接続者(3人)`になること。
+  - メニュー内に3行、それぞれ指定した色（`background-color`が期待値と一致）＋氏名（`竹田`/`テスター`/`竹山`）がホバー等の追加操作なしに常時表示されていること。
+  - 2人分の`presence_update`（竹田/テスターのみ）を再受信すると、開いたままのメニューの人数ラベル・行内容が`接続者(2人)`＋2行に動的に更新されること（人数変動への追随を確認）。
+  - オーバーレイの背景部分をクリックするとメニューが閉じる（`display:none`に戻る）こと。
+  - PC版（`gantt-collab.html`、モバイルフラグなし）で同じ`presence_update`を受信させても、`#collab-presence-btn`/`#collab-presence-menu`/`#collab-presence-overlay`のいずれも生成されず、既存の`#collab-presence`（■が複数生成される）表示は変化しないこと。
+  - スクリーンショットで、ハンバーガーメニューの項目順（ユーザー設定/アカウント管理/プロジェクト管理/プロジェクト切替/通知/接続者(3人)/ログアウト）およびウィンドウメニューの見た目（ヘッダー「接続者(3人)」＋■＋氏名を縦一列表示）がユーザー提示のモックアップと一致することを目視確認済み。
+- この方式はユーザー確認済み（2026-08-13、4点の設計方針を提示し「確認しました．1～4について，あなたの提案する内容でOKです．進めてください．」と承認を受けて実装）。
+
 ---
 
 ## 6. 実装時の注意点（開発ルール遵守）
@@ -178,6 +210,7 @@ webapp/
 - `collab-client.js` の `#collab-status-bar` をモバイルでどう扱うか（そのまま使う/レイアウトだけ調整/機能を統合メニューに完全移管する）は実装の中で調整しながら進める。
 - 【確定・実装済み(Task #5)】「プロジェクト切替」ドロップアップ（`#collab-switch-menu`）が、モバイル版で画面左下に表示されてしまう不具合を、通知パネルと同じ「オーバーレイ＋画面中央固定表示」（A案）に統一して解消した。詳細は5.2節参照。なお、通知パネル自体の表示位置はユーザーの再調査により問題なしと確認済み（Task #6・対応不要でクローズ）。
 - 【確定・実装済み(Task #5追加要望)】「プロジェクト切替」「通知」タップ時に統合メニュー(`#mobileMenuPanel`)が背後に開いたまま残る点について、`gantt/gantt-mobile.html`の`wire()`関数内の該当2箇所のみ、`proxyClick()`の`beforeDelegate`経由で事前にパネルを閉じるように対応した。詳細は5.3節参照。
+- 【確定・実装済み(新規要望)】PC版ステータスバーの接続者■表示（ホバーで氏名表示）に対応する項目がモバイル版に無かった点について、ハンバーガーメニューに動的な人数表示付き「接続者(*人)」項目を追加し、タップすると「プロジェクト切替」と同様のウィンドウメニューで全接続者（■＋氏名、ホバー不要）を一覧表示するようにした。詳細は5.4節参照。
 - 【依存線作成（右ドラッグの代替）の実装方式・確定】タッチデバイスに右クリック/右ドラッグは存在しないため、タスクバーの**長押し**を起点に、PC版の「右ボタン押下→分岐」と同じ構造を再現する方式で実装した（`gantt-mobile.html`のみに追加、`gantt-collab.html`は無変更）。
   - タスクバーを約450ms押し続けると（`MOBILE_LONG_PRESS_MS`）、PC版の`beginDependencyDraft()`を直接呼び出し、右ボタン押下時と同じ内部状態（`interaction.mode = 'link-pending'`）に入る。長押し確定時は`navigator.vibrate()`が使える端末では軽いバイブレーションでフィードバックする。
   - 長押しがそのまま確定し、指を動かさずに離すと、ブラウザが合成する`contextmenu`イベント経由で既存の`#contextMenu`（階層操作メニュー）が表示される（コード変更なしで動作する仕組みを流用）。

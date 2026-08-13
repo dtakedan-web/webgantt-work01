@@ -5820,6 +5820,7 @@ body.is-pane-resizing * {
       <button id="mobileMenuProjectBtn" type="button" class="mobile-menu-item">プロジェクト管理</button>
       <button id="mobileMenuSwitchBtn" type="button" class="mobile-menu-item">プロジェクト切替</button>
       <button id="mobileMenuNotifBtn" type="button" class="mobile-menu-item">通知</button>
+      <button id="mobileMenuPresenceBtn" type="button" class="mobile-menu-item">接続者</button>
       <button id="mobileMenuLogoutBtn" type="button" class="mobile-menu-item">ログアウト</button>
     </div>
     <header class="topbar">
@@ -31162,6 +31163,13 @@ ${appendText}` : appendText;
       if (panel) panel.hidden = true;
     });
     proxyClick('mobileMenuNotifBtn', 'notif-bell-btn', function () {
+      var panel = document.getElementById('mobileMenuPanel');
+      if (panel) panel.hidden = true;
+    });
+    // 「接続者」は、PC版ステータスバー上に対応する実クリック可能ボタンが
+    // 存在しない（■表示のみ）ため、collab-client.js側に新設した非表示の
+    // 委譲先ボタン(#collab-presence-btn)へ委譲する。
+    proxyClick('mobileMenuPresenceBtn', 'collab-presence-btn', function () {
       var panel = document.getElementById('mobileMenuPanel');
       if (panel) panel.hidden = true;
     });
