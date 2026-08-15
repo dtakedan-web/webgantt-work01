@@ -1,7 +1,7 @@
 # Googleカレンダー予定インポート機能 設計書
 
 - 作成日: 2026-08-14
-- ステータス: **確定・ユーザー承認済み（2026-08-14、UI名称・サブメニュー構成の追加要望も反映済み）／コード実装は未着手。ユーザー様がGoogle Cloud Console登録作業に着手中（12節）**
+- ステータス: **確定・ユーザー承認済み（2026-08-14、UI名称・サブメニュー構成の追加要望も反映済み）／2026-08-15: 実装着手前調査によりAPI設計を方針転換（6節・8.2節、タスク生成はフロントエンドJS側で実施）、ユーザー承認済み。クライアントID/シークレット発行済み。実装フェーズ進行中**
 - 前提: `WebGantt開発コンテキスト.md` の全ルールに従う
   - `gantt-collab.html`（PC版）のコアUI/UXは変更しない
   - Web専用の新機能は最下バーまたは別ページに実装する
@@ -180,7 +180,8 @@ CREATE TABLE google_calendar_tokens (
 備考:
 - `users`テーブルの主キー名・型は既存スキーマに合わせて調整が必要（`api/config.php`等の既存コードから実際の型を確認する）
 - 1ユーザー1連携（`UNIQUE KEY uq_user_id`）とし、再連携時は既存行をUPDATEする方針
-- **タスク側テーブルへのスキーマ変更は不要**（重複防止の仕組みを持たないため、インポート元IDを記録するカラム等は追加しない）
+- **`tasks`テーブルへの本機能用スキーマ変更は不要**（重複防止の仕組みを持たないため、インポート元IDを記録するカラム等は追加しない。かつ6.2節の方針転換により、タスクデータ自体もPHP側からDBへ直接書き込むことはない）
+- なお`google_calendar_tokens`テーブル自体もマイグレーションSQLファイルとして`docs/`配下に保存し、本番サーバーの`mysql`コマンドで手動実行する運用とする（本プロジェクトには既存の`sql/schema.sql`相当の一元管理ファイルが存在しないため）
 
 ### 5.2 トークンの暗号化（確定: 案1）
 
@@ -191,7 +192,11 @@ CREATE TABLE google_calendar_tokens (
 
 ---
 
-## 6. API設計
+## 6. API設計（方針転換・確定: 2026-08-15）
+
+**重要な方針転換**: 実装着手前のコード調査により、`gantt-collab.html`のタスクデータは**PHP側のREST API経由でDBに書き込まれる経路が存在しない**ことが判明した（既存の「新規タスク追加」はフロントエンドJS内で`state.rows`/`state.tasks`に直接pushし、`gantt:op`（COLLAB-HOOK）→ `collab-client.js`（Socket.IO）→ Node.js WebSocketサーバー（`gantt-ws`、本サンドボックス外）経由でのみ永続化・同期される設計）。
+
+このため、**PHP側API（`api/calendar_import.php`）の役割を「Google認可・トークン管理・予定データの取得」までに限定**し、実際のタスク生成・追加処理は**フロントエンドJS側（`gantt-collab.html`）** で行う方針に変更する（ユーザー承認済み・2026-08-15）。
 
 新規ファイル `api/calendar_import.php` を追加し、既存の `api/auth.php` と同じ `?action=xxx` ルーティングパターンを踏襲する。
 
@@ -201,13 +206,31 @@ CREATE TABLE google_calendar_tokens (
 | GET | `authorize` | Google OAuth認可URLを生成しリダイレクト（`state`パラメータにCSRF対策トークン＋セッションIDを埋め込む） |
 | GET | `callback` | Googleからの認可コードを受け取り、アクセストークン/リフレッシュトークンと交換し`google_calendar_tokens`に保存。完了後、元のガント画面（モーダルが開いた状態）にリダイレクト |
 | POST | `disconnect` | 連携解除。該当ユーザーの`google_calendar_tokens`行を削除（Google側のトークン失効APIも呼び出す） |
-| GET | `list_events` | クエリパラメータ`start_date=YYYY-MM-DD&end_date=YYYY-MM-DD`でカスタム期間を指定し、Google Calendar API（`events.list`, read-only, `singleEvents=true`で繰り返し予定を個別インスタンスに展開）で予定一覧を取得して返す。サーバー側で`end_date - start_date <= 31日`を検証し、超過時は400エラー。トークン期限切れ時は`refresh_token`で自動更新 |
-| POST | `import` | リクエストボディに選択された予定の配列（title, start, end, all_day等）と`project_id`を受け取り、各予定をタスクとして`tasks`テーブル（既存スキーマ）にフラット・第0階層で登録 |
+| GET | `list_events` | クエリパラメータ`start_date=YYYY-MM-DD&end_date=YYYY-MM-DD`でカスタム期間を指定し、Google Calendar API（`events.list`, read-only, `singleEvents=true`で繰り返し予定を個別インスタンスに展開）で予定一覧を取得して**JSON形式でフロントエンドに返す**（DB書き込みは行わない）。サーバー側で`end_date - start_date <= 31日`を検証し、超過時は400エラー。トークン期限切れ時は`refresh_token`で自動更新 |
+
+**（削除）** `POST import` アクションは実装しない。PHP側からの`tasks`テーブル直接書き込みは行わない。
 
 ### 6.1 既存パターンとの整合
 
 - `config.php`の`getDb()` / `sendJson()` / `sendError()` / `handlePreflight()` / `getSessionIdFromCookie()`をそのまま利用
 - 外部API呼び出しは `MailSender.php` のcurl_init()パターンを参考にする（Google API PHPクライアントライブラリ`google/apiclient`の利用を推奨。`api/composer.json`に追加が必要）
+
+### 6.2 タスク生成・追加処理（フロントエンドJS側・新方針）
+
+`list_events`で取得した予定データ（JSON配列）は、画面C（予定一覧）でユーザーが選択後、「選択した予定をインポート」ボタン押下時に**サーバーを介さずフロントエンドJSのみで処理**する:
+
+1. `gantt-collab.html`に新規関数（例: `importGoogleCalendarEvents(events)`）を追加する
+2. 既存の`executeImport()`（JSONインポート機能、21095行目付近）と同様のパターンを踏襲: 各予定について`generateId('row')` / `generateId('task')`で新規row/taskオブジェクトを生成し、`state.rows` / `state.tasks`に**一括push**（第0階層・フラット、既存確定要件5・7を満たす）
+3. `render()`を呼び出し画面を再描画
+4. **COLLAB-HOOKは個別`task_add`ではなく`state_sync`（`subtype: 'calendar_import'`）で1回だけ発火**する（`executeImport()`の末尾パターンと同一。複数タスクを1度にまとめて同期するため）:
+   ```javascript
+   document.dispatchEvent(new CustomEvent('gantt:op', { detail: {
+     op: 'state_sync', subtype: 'calendar_import',
+     snapshot: JSON.parse(buildSerializableProject())
+   }}));
+   ```
+5. この新規関数は「外部連携」モーダル（新規UI）からのみ呼び出される想定で、既存のUI要素（ツールバー・ポップオーバー・ダイアログ）は一切変更しない。追加は「新規関数1つ」のみに限定する
+6. モーダル側（新規UI、フロントエンドJS）が`GET /api/calendar_import.php?action=list_events`をfetchし、返却されたJSON配列をこの関数に渡す、という結合になる
 
 ### 6.2 スコープ（read-only厳守）
 
@@ -279,11 +302,11 @@ WEBGANTT_TOKEN_ENCRYPTION_KEY=
 
 補足2（繰り返し予定）: `events.list`呼び出し時に`singleEvents=true`を指定し、繰り返し予定（recurring event）は個別の発生インスタンスに展開された状態で一覧取得する。一覧表示・インポート処理は通常の単発予定と同一のロジックで扱い、特別な階層化や集約は行わない（確定要件13）。
 
-### 8.2 登録ロジック
+### 8.2 登録ロジック（方針転換・6.2節参照）
 
 - インポート対象は常に**現在開いているプロジェクトの第0階層（最上位）**に追加
 - 親子関係・階層構造は一切持たせない（フラットな単一タスクとして追加）
-- 既存の「新規タスク追加」APIロジック（`projects.php`等、要確認）と同じ経路でDBに書き込む想定。複数件を1トランザクションでまとめて登録する
+- **6節の方針転換により、PHP側APIやDBへの直接書き込みは行わない。** `gantt-collab.html`のフロントエンドJS内で`state.rows`/`state.tasks`へ一括pushし、既存のCOLLAB-HOOK経由（`state_sync`イベント）でWebSocketサーバーに送信・永続化される（既存の`executeImport()`と同一の経路）
 
 ### 8.3 重複防止（意図的に非実装）
 
@@ -375,13 +398,15 @@ WEBGANTT_TOKEN_ENCRYPTION_KEY=
 
 ---
 
-## 13. 今後の実装ステップ
+## 13. 今後の実装ステップ（2026-08-15更新）
 
-1. **Google Cloud Console登録**（ユーザー様作業、12節の手順）→ クライアントID/シークレット受領
-2. DBスキーマ作成（`google_calendar_tokens`テーブル、5節）
-3. `api/composer.json`へ`google/apiclient`追加
-4. `api/calendar_import.php`実装（status/authorize/callback/disconnect/list_events/import、6節）
-5. フロントエンドUI実装（案A: 最下バーボタン＋モーダル、4節）
-6. `.env.example` / `.gitignore`更新（7.3節）
+1. ~~Google Cloud Console登録~~ → **完了**（ユーザー様がクライアントID/シークレット発行済み）
+2. `.env.example` / `.gitignore`更新（7.3節）— 環境変数テンプレート追加
+3. DBマイグレーションSQL作成（`google_calendar_tokens`テーブル、5節）— `docs/`配下にSQLファイルとして保存、本番サーバーで手動実行
+4. `api/composer.json`へ`google/apiclient`追加
+5. `api/calendar_import.php`実装（status/authorize/callback/disconnect/list_events の5アクション、6節・方針転換反映）
+6. フロントエンドUI実装:
+   - `collab/collab-client.js`: 「外部連携」ボタン追加（4.1節）
+   - `gantt-collab.html`: モーダルHTML/CSS（画面0→画面A/B/C、4.1.1・4.2節）＋新規関数`importGoogleCalendarEvents()`（6.2節）を追加
 7. Playwrightテスト（OAuth部分はモック化、UI操作フロー・期間選択・複数選択・インポート実行を中心に検証）＋実機でのGoogle実アカウントによる疎通確認
 8. ドキュメント更新・コミット・push
