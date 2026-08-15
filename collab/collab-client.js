@@ -1841,6 +1841,9 @@
       }
       // Phase 4: フィードボタンをステータスバーに追加（presenceEl の左に挿入）
       _initFeedUI(statusBar);
+      // 外部連携: Googleカレンダー等からの予定インポート機能ボタンを追加（feedBtnと同パターン）
+      // 参照: docs/google-calendar-import-design.md 4.1節
+      _initExternalIntegrationUI(statusBar);
 
       const toastContainer = document.createElement('div');
       toastContainer.id = 'collab-toast-container';
@@ -2057,6 +2060,70 @@
   function _closeFeedMenu() {
     _feedMenu.style.display = 'none';
     _feedMenuOpen = false;
+  }
+
+  // ════════════════════════════════════════════════════════════
+  // 外部連携: Googleカレンダー等からの予定インポート機能
+  // 参照: docs/google-calendar-import-design.md 4.1節
+  // ────────────────────────────────────────────────────────────
+  // 本ボタンの役割は「ステータスバーへの追加」のみに限定する。
+  // クリック時はモーダルUI本体（画面0〜C）を持つ gantt-collab.html 側に
+  // カスタムイベント（gantt:openExternalIntegration）で通知するだけであり、
+  // モーダルの中身（HTML/CSS/ロジック）は本ファイルには一切実装しない
+  // （既存のUI要素・コアロジックには影響を与えない設計。PC版のみ対応、
+  // モバイル版への追加は本フェーズのスコープ外）。
+  // ════════════════════════════════════════════════════════════
+  function _initExternalIntegrationUI(statusBarEl) {
+    const btn = document.createElement('a');
+    btn.id = 'collab-external-integration-btn';
+    btn.href = '#';
+    btn.title = '外部カレンダーから予定をインポート';
+
+    const icon = document.createElement('span');
+    icon.textContent = '🔗';
+    icon.style.marginRight = '3px';
+    const label = document.createElement('span');
+    label.textContent = '外部連携';
+
+    btn.appendChild(icon);
+    btn.appendChild(label);
+
+    // ボタンスタイル（feedBtnと統一）
+    Object.assign(btn.style, {
+      display:         'inline-flex',
+      alignItems:      'center',
+      height:          '17px',
+      padding:         '0 7px',
+      fontSize:        '11px',
+      color:           '#a5d6a7',
+      background:      'rgba(255,255,255,0.07)',
+      border:          '1px solid rgba(165,214,167,0.45)',
+      borderRadius:    '4px',
+      textDecoration:  'none',
+      cursor:          'pointer',
+      lineHeight:      '1',
+      transition:      'background 0.15s',
+    });
+    btn.onmouseenter = function () { btn.style.background = 'rgba(255,255,255,0.15)'; };
+    btn.onmouseleave = function () { btn.style.background = 'rgba(255,255,255,0.07)'; };
+
+    btn.onclick = function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      document.dispatchEvent(new CustomEvent('gantt:openExternalIntegration'));
+    };
+
+    // feedBtn の直前（＝presenceEl の左隣より一つ手前）に挿入。
+    // 表示順: ... [フィード📢] [外部連携🔗] (右端)プレゼンス
+    const feedBtnEl = statusBarEl.querySelector('#collab-feed-btn');
+    const presenceEl = statusBarEl.querySelector('#collab-presence');
+    if (presenceEl) {
+      statusBarEl.insertBefore(btn, presenceEl);
+    } else if (feedBtnEl) {
+      statusBarEl.appendChild(btn);
+    } else {
+      statusBarEl.appendChild(btn);
+    }
   }
 
   function appendToFeed(message, color, opLabel) {
