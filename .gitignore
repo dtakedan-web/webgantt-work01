@@ -3,6 +3,9 @@
 .env.local
 .env.*.local
 
+# Google OAuth クライアントシークレットJSON（Cloud Consoleからダウンロードする場合に備えて）
+client_secret*.json
+
 # Git 認証情報
 .git-credentials
 
