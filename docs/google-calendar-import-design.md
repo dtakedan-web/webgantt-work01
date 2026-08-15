@@ -214,6 +214,7 @@ CREATE TABLE google_calendar_tokens (
 
 - `config.php`の`getDb()` / `sendJson()` / `sendError()` / `handlePreflight()` / `getSessionIdFromCookie()`をそのまま利用
 - 外部API呼び出しは `MailSender.php` のcurl_init()パターンを参考にする（Google API PHPクライアントライブラリ`google/apiclient`の利用を推奨。`api/composer.json`に追加が必要）
+- **実装済み補足（2026-08-15）**: 連携先Googleアカウントのメールアドレス（表示用、`google_email`カラム）は、当初想定していた`userinfo.get()` API呼び出しではなく、認可コード交換時に取得する`id_token`を`Google\Client::verifyIdToken()`で検証・デコードして抽出する方式で実装した。これに伴いスコープに`openid`・`https://www.googleapis.com/auth/userinfo.email`を追加（いずれも識別用の読み取りスコープであり、read-only厳守の設計方針に影響しない）。CSRF対策の`state`検証はPHPネイティブセッション（`session_start()`）に保存する方式とし、既存の`gantt_session`Cookie／`sessions`テーブルによる認証方式には一切変更を加えていない
 
 ### 6.2 タスク生成・追加処理（フロントエンドJS側・新方針）
 
