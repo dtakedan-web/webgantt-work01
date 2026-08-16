@@ -30098,14 +30098,34 @@ ${appendText}` : appendText;
     color: var(--text-sub, #5f6775);
     flex-shrink: 0;
   }
-  #extCalOverlay .ext-cal-row input[type="date"] {
+  #extCalOverlay .ext-cal-date-wrap {
+    position: relative;
     flex: 1;
+  }
+  #extCalOverlay .ext-cal-date-wrap input[type="date"] {
+    width: 100%;
+    box-sizing: border-box;
     padding: 6px 8px;
     border: 1px solid var(--line-strong, #dce2e8);
     border-radius: 6px;
     font-size: 13px;
-    color: var(--text-main, #2f3441);
     background: var(--bg-surface, #fff);
+    /* ネイティブの年月日テキストはOS依存の書式(曜日欄が空崩れする不具合)で
+       描画されるため非表示にし、下記 .ext-cal-date-display に自前描画した
+       テキストを重ねて表示する。カレンダーピッカーアイコン・クリックでの
+       日付選択機能はネイティブのまま維持する。 */
+    color: transparent;
+    -webkit-text-fill-color: transparent;
+  }
+  #extCalOverlay .ext-cal-date-display {
+    position: absolute;
+    left: 9px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 13px;
+    color: var(--text-main, #2f3441);
+    pointer-events: none;
+    white-space: nowrap;
   }
   #extCalOverlay .ext-cal-account-info {
     font-size: 12px;
@@ -30365,14 +30385,39 @@ ${appendText}` : appendText;
     _body.innerHTML =
       _backLinkHtml() +
       emailHtml +
-      '<div class="ext-cal-row"><label>開始日</label><input type="date" id="extCalStartDate" lang="en-US" value="' + _screenState.startDate + '"></div>' +
-      '<div class="ext-cal-row"><label>終了日</label><input type="date" id="extCalEndDate" lang="en-US" value="' + _screenState.endDate + '"></div>' +
+      '<div class="ext-cal-row"><label>開始日</label><div class="ext-cal-date-wrap">' +
+        '<input type="date" id="extCalStartDate" value="' + _screenState.startDate + '">' +
+        '<span class="ext-cal-date-display" id="extCalStartDateDisplay">' + _formatDisplayDate(_screenState.startDate) + '</span>' +
+      '</div></div>' +
+      '<div class="ext-cal-row"><label>終了日</label><div class="ext-cal-date-wrap">' +
+        '<input type="date" id="extCalEndDate" value="' + _screenState.endDate + '">' +
+        '<span class="ext-cal-date-display" id="extCalEndDateDisplay">' + _formatDisplayDate(_screenState.endDate) + '</span>' +
+      '</div></div>' +
       '<div id="extCalRangeError" class="ext-cal-error" style="display:none;"></div>' +
       '<div class="ext-cal-footer-actions">' +
         '<button type="button" class="ext-cal-btn danger" id="extCalDisconnectBtn">連携を解除</button>' +
         '<button type="button" class="ext-cal-btn primary" id="extCalLoadEventsBtn">予定を読み込む</button>' +
       '</div>';
     _bindBackLink();
+
+    // ネイティブ<input type="date">はOS依存の書式（曜日欄が空崩れする不具合）で
+    // 描画されるためテキストを透明化しており、代わりに自前フォーマットの
+    // テキストを .ext-cal-date-display に表示する（CSSで重ねて配置）。
+    // 日付変更時・初期表示時の両方でテキストを更新する。
+    var startInputEl = document.getElementById('extCalStartDate');
+    var endInputEl = document.getElementById('extCalEndDate');
+    var startDisplayEl = document.getElementById('extCalStartDateDisplay');
+    var endDisplayEl = document.getElementById('extCalEndDateDisplay');
+    if (startInputEl && startDisplayEl) {
+      startInputEl.addEventListener('input', function () {
+        startDisplayEl.textContent = _formatDisplayDate(startInputEl.value);
+      });
+    }
+    if (endInputEl && endDisplayEl) {
+      endInputEl.addEventListener('input', function () {
+        endDisplayEl.textContent = _formatDisplayDate(endInputEl.value);
+      });
+    }
 
     var loadBtn = document.getElementById('extCalLoadEventsBtn');
     if (loadBtn) loadBtn.onclick = function () {
