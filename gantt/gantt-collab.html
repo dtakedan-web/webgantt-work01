@@ -30171,7 +30171,7 @@ ${appendText}` : appendText;
 <div id="extCalOverlay">
   <div class="ext-cal-modal">
     <div class="ext-cal-header">
-      <h3>外部連携</h3>
+      <h3 id="extCalModalTitle">外部連携</h3>
       <button type="button" class="ext-cal-close" id="extCalCloseBtn" aria-label="閉じる">&#x2715;</button>
     </div>
     <div class="ext-cal-body" id="extCalBody">
@@ -30264,6 +30264,12 @@ ${appendText}` : appendText;
     return window.__ganttState || null;
   }
 
+  // モーダルタイトルの切替（画面0: 「外部連携」／各連携先の画面: 「◯◯連携」）
+  function _setModalTitle(text) {
+    var titleEl = document.getElementById('extCalModalTitle');
+    if (titleEl) titleEl.textContent = text;
+  }
+
   /* ────────────────────────────────────────────────
      画面遷移
   ──────────────────────────────────────────────── */
@@ -30280,6 +30286,7 @@ ${appendText}` : appendText;
 
   // ── 画面0: 連携先の選択 ──────────────────────────
   function renderScreen0() {
+    _setModalTitle('外部連携');
     _body.innerHTML =
       '<div class="ext-cal-menu-item" id="extCalGoogleItem">' +
         '<span class="ext-cal-menu-icon">📅</span>' +
@@ -30298,7 +30305,7 @@ ${appendText}` : appendText;
   }
 
   function _backLinkHtml() {
-    return '<a class="ext-cal-back-link" id="extCalBackLink">&larr; 連携先の選択に戻る</a>';
+    return '<a class="ext-cal-back-link" id="extCalBackLink">&larr; その外部連携に戻る</a>';
   }
 
   function _bindBackLink() {
@@ -30308,6 +30315,7 @@ ${appendText}` : appendText;
 
   // ── 連携状態を確認して画面A or Bを表示 ────────────
   function checkStatusAndRender() {
+    _setModalTitle('Googleカレンダー連携');
     _body.innerHTML = _backLinkHtml() + '<div class="ext-cal-loading">確認中…</div>';
     _bindBackLink();
     fetch(API_BASE + '?action=status', { credentials: 'include' })
@@ -30357,8 +30365,8 @@ ${appendText}` : appendText;
     _body.innerHTML =
       _backLinkHtml() +
       emailHtml +
-      '<div class="ext-cal-row"><label>開始日</label><input type="date" id="extCalStartDate" value="' + _screenState.startDate + '"></div>' +
-      '<div class="ext-cal-row"><label>終了日</label><input type="date" id="extCalEndDate" value="' + _screenState.endDate + '"></div>' +
+      '<div class="ext-cal-row"><label>開始日</label><input type="date" id="extCalStartDate" lang="en-US" value="' + _screenState.startDate + '"></div>' +
+      '<div class="ext-cal-row"><label>終了日</label><input type="date" id="extCalEndDate" lang="en-US" value="' + _screenState.endDate + '"></div>' +
       '<div id="extCalRangeError" class="ext-cal-error" style="display:none;"></div>' +
       '<div class="ext-cal-footer-actions">' +
         '<button type="button" class="ext-cal-btn danger" id="extCalDisconnectBtn">連携を解除</button>' +
