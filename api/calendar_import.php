@@ -16,6 +16,25 @@
  *   GET  /api/calendar_import.php?action=list_events → 予定一覧取得（JSON、DB書き込みなし）
  */
 
+// ─── .env 読み込み（Apache SetEnv非経由の環境向け・send_daily_emails.phpと同一パターン） ──
+// 既存のDB接続情報等はApacheのSetEnvディレクティブで注入されているが、本ファイルは
+// SetEnv未設定のGoogle OAuth用変数を.envから直接読み込む必要があるため追加。
+// 既にgetenv()で取得できる値（Apache SetEnv経由）は上書きしない（安全のためnullチェック）。
+$envFile = __DIR__ . '/.env';
+if (file_exists($envFile)) {
+  $lines = file($envFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+  foreach ($lines as $line) {
+    if (str_starts_with(trim($line), '#')) continue;
+    $eqPos = strpos($line, '=');
+    if ($eqPos === false) continue;
+    $key = trim(substr($line, 0, $eqPos));
+    $val = trim(substr($line, $eqPos + 1));
+    if ($key && getenv($key) === false) {
+      putenv($key . '=' . $val);
+    }
+  }
+}
+
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/vendor/autoload.php';
 handlePreflight();
