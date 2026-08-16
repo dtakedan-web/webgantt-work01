@@ -4,15 +4,22 @@
 -- ============================================================
 -- 参照: docs/google-calendar-import-design.md 5.1節
 -- 実行方法（本番サーバー）:
---   mysql -u <db_user> -p <db_name> < docs/sql/2026-08-15_google_calendar_tokens.sql
+--   mysql -u root -p gantt_collab < docs/sql/2026-08-15_google_calendar_tokens.sql
+-- （DDL権限が必要なためroot等の管理ユーザーで実行。作成後の通常アクセスは
+--   既存の.env設定のWEBGANTT_DB_USER（例: gantt_app）が使用する）
+--
+-- 注意: user_id は既存 users.id（bigint、符号あり）と型を完全一致させる
+-- 必要がある（MySQL 8.0のFOREIGN KEY制約は型不一致だとERROR 3780になる）。
+-- 2026-08-16: 本番のusers.idがbigint(符号あり)であることが判明したため、
+-- 当初のINT UNSIGNEDから修正した。
 --
 -- ロールバック（機能を撤去する場合）:
 --   DROP TABLE IF EXISTS google_calendar_tokens;
 -- ============================================================
 
 CREATE TABLE IF NOT EXISTS google_calendar_tokens (
-  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-  user_id INT UNSIGNED NOT NULL,
+  id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  user_id BIGINT NOT NULL,                  -- users.id (bigint, 符号あり) と完全一致させる
   google_email VARCHAR(255) NULL,           -- 連携先Googleアカウントのメールアドレス（表示用）
   access_token TEXT NOT NULL,               -- openssl_encryptで暗号化して保存
   refresh_token TEXT NOT NULL,              -- openssl_encryptで暗号化して保存
