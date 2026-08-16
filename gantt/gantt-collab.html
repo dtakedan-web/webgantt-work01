@@ -30038,6 +30038,19 @@ ${appendText}` : appendText;
     text-decoration: none;
   }
   #extCalOverlay .ext-cal-back-link:hover { text-decoration: underline; }
+  #extCalOverlay .ext-cal-header-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+  #extCalOverlay .ext-cal-header-row .ext-cal-back-link { margin-bottom: 0; flex-shrink: 0; }
+  #extCalOverlay .ext-cal-header-row .ext-cal-btn {
+    padding: 5px 12px;
+    font-size: 12px;
+    flex-shrink: 0;
+  }
   #extCalOverlay .ext-cal-menu-item {
     display: flex;
     align-items: center;
@@ -30094,13 +30107,15 @@ ${appendText}` : appendText;
   }
   #extCalOverlay .ext-cal-row label {
     width: 64px;
+    text-align: right;
     font-size: 12px;
     color: var(--text-sub, #5f6775);
     flex-shrink: 0;
   }
   #extCalOverlay .ext-cal-date-wrap {
     position: relative;
-    flex: 1;
+    flex: 0 1 50%;
+    margin-left: auto;
   }
   #extCalOverlay .ext-cal-date-wrap input[type="date"] {
     width: 100%;
@@ -30383,7 +30398,10 @@ ${appendText}` : appendText;
       ? '<div class="ext-cal-account-info">連携中のアカウント: ' + _escapeHtml(_screenState.googleEmail) + '</div>'
       : '';
     _body.innerHTML =
-      _backLinkHtml() +
+      '<div class="ext-cal-header-row">' +
+        _backLinkHtml() +
+        '<button type="button" class="ext-cal-btn danger" id="extCalDisconnectBtn">連携を解除</button>' +
+      '</div>' +
       emailHtml +
       '<div class="ext-cal-row"><label>開始日</label><div class="ext-cal-date-wrap">' +
         '<input type="date" id="extCalStartDate" value="' + _screenState.startDate + '">' +
@@ -30395,7 +30413,6 @@ ${appendText}` : appendText;
       '</div></div>' +
       '<div id="extCalRangeError" class="ext-cal-error" style="display:none;"></div>' +
       '<div class="ext-cal-footer-actions">' +
-        '<button type="button" class="ext-cal-btn danger" id="extCalDisconnectBtn">連携を解除</button>' +
         '<button type="button" class="ext-cal-btn primary" id="extCalLoadEventsBtn">予定を読み込む</button>' +
       '</div>';
     _bindBackLink();
