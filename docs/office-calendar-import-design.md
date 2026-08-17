@@ -1,7 +1,7 @@
 # Outlookカレンダー（ICS連携）予定インポート機能 設計書
 
 - 作成日: 2026-08-17
-- ステータス: **設計確定・ユーザー承認済み（2026-08-17）。実装フェーズ着手前**
+- ステータス: **実装完了・本番デプロイ完了・実機動作確認済み（2026-08-17）。ユーザー最終確認済み「問題なく、ICS登録と実際のOutlookカレンダーからのガントチャートへのデータ読み取り〜反映までができました」**
 - 前提: `WebGantt開発コンテキスト.md` の全ルールに従う
   - `gantt-collab.html`（PC版）のコアUI/UXは変更しない
   - Web専用の新機能は最下バーまたは別ページに実装する
@@ -309,17 +309,62 @@ Google版と同一方針。同一予定の複数回インポート防止・イ�
 
 1. ~~方式調査・実機検証~~ → **完了**（本設計書2節・10節参照）
 2. ~~設計書作成・ユーザー承認~~ → **完了**（2026-08-17）
-3. DBマイグレーションSQL作成（`office_calendar_tokens`テーブル、4.1節）— `docs/sql/`配下にSQLファイルとして保存、本番サーバーで手動実行
-4. `api/composer.json`へ`sabre/vobject`追加、本番サーバーでの`composer install`実行（ユーザー様側作業）
-5. `api/office_calendar_import.php`実装（status/connect/disconnect/list_eventsの4アクション、5節）
-6. フロントエンドUI実装:
-   - `gantt-collab.html`: 画面0の「Outlookカレンダー（ICS連携）」行の有効化、画面A（ICS入力フォーム、3.2節）・画面B/C（Google版流用）・新規関数`importOfficeCalendarEvents()`（6.2節）を追加
-7. Playwrightテスト（UI操作フロー・期間選択・複数選択・インポート実行を中心に検証）＋実機での実際のOutlook予定表による疎通確認
-8. ドキュメント更新・コミット・push
+3. ~~DBマイグレーションSQL作成~~ → **完了**（`office_calendar_tokens`テーブル、4.1節、`docs/sql/2026-08-17_office_calendar_tokens.sql`、本番サーバーで実行済み）
+4. ~~`api/composer.json`へ`sabre/vobject`追加、本番サーバーでの`composer install`実行~~ → **完了**（ユーザー様側作業、実行確認済み）
+5. ~~`api/office_calendar_import.php`実装~~ → **完了**（status/connect/disconnect/list_eventsの4アクション、5節。サンドボックス内単体テスト実施済み）
+6. ~~フロントエンドUI実装~~ → **完了**
+   - `gantt-collab.html`: 画面0の「Outlookカレンダー（ICS連携）」行の有効化、画面A（ICS入力フォーム、3.2節）・画面B/C（Google版流用）・新規関数`importOfficeCalendarEvents()`（6.2節）を実装
+7. ~~実機での実際のOutlook予定表による疎通確認~~ → **完了（2026-08-17）**。12節参照
+8. ~~ドキュメント更新・コミット・push~~ → **完了**（本節参照。コミット: `b3215cd`, `410f312`）
 
 ---
 
-## 12. 参考: 断念したAzure AD OAuth方式の記録（備忘）
+## 12. 本番デプロイ・実機動作確認（2026-08-17実施・完了）
+
+### 12.1 実装コミット
+
+| コミット | 内容 |
+|---|---|
+| `0e5b05e` | 本設計書の新規作成 |
+| `b3215cd` | DBマイグレーションSQL、`api/composer.json`/`composer.lock`（`sabre/vobject`追加）、`api/office_calendar_import.php`新規実装、`gantt-collab.html`のUI実装、`collab/collab-client.js`のsubtypeラベル追加 |
+| `410f312` | 下部ステータスバーのボタンUI改良（並び順・配色。本機能のバックエンド/フロントエンドロジックには変更なし。詳細は`collab/collab-client.js`のgit履歴を参照） |
+
+### 12.2 本番サーバーでの反映作業（ユーザー実施・確認済み）
+
+ユーザーが本番サーバー（`/media/HDD1_DATA/Web/WebGantt/`）で以下を実行し、「OKです」と確認済み：
+
+1. `git pull` によるファイル反映（`office_calendar_import.php`、`gantt-collab.html`、`collab-client.js`、`composer.json`/`composer.lock`等）
+2. `composer install --no-dev`（`sabre/vobject`, `sabre/uri`, `sabre/xml` の3パッケージインストール）
+3. マイグレーションSQL（`docs/sql/2026-08-17_office_calendar_tokens.sql`）の`mysql`コマンドによる実行（`office_calendar_tokens`テーブル作成）
+
+実行順序: **`git pull` → `composer install --no-dev` → `mysql`コマンドでSQL実行**（この順序で問題なく完了）。
+
+### 12.3 実機動作確認結果（ユーザー実施・完了）
+
+再発行されたICS購読URL（Outlook on the web「予定表の発行」機能経由）を用いて、本番環境（`https://ogma.mydns.jp/WebGantt/`）で以下の一連の動作を確認：
+
+- ICS購読URLの登録（`connect`アクション）
+- 実際のOutlookカレンダーの予定一覧取得（`list_events`アクション）
+- ガントチャートへのデータ取り込み・タスクとしての反映
+
+ユーザーコメント: 「問題なく、ICS登録と実際のOutlookカレンダーからのガントチャートにデータ読み取り〜反映までができました」
+
+以上により、**Task C（Officeカレンダー連携: ICS購読URL方式）は実装・本番デプロイ・実機動作確認のすべてが完了した**。
+
+### 12.4 参考情報: ICS購読URLの発行方法についての補足（ユーザー資料作成用、2026-08-17時点で調査・回答済み）
+
+ユーザーから「ICS購読URLの発行は `outlook.cloud.microsoft`（Web版Outlook）でしか設定できないのか」との質問があり、以下の通り回答済み（ユーザー向け説明資料はユーザー側で別途準備するため、本リポジトリでの資料作成は行わない）：
+
+- **Outlook on the web（Web版、`outlook.office.com`）**: 公式にサポートされる唯一の確実な方法。設定 → カレンダー → 共有カレンダー → 「カレンダーの発行」からICS形式のリンクを発行できる
+- **new Outlook（Windowsの新Outlookアプリ）**: 内部的にOutlook on the webを組み込んだものであり、同じ発行手順が使える（実質①と同じ）
+- **Outlook（classic、従来のWin32デスクトップ版）**: 「予定表をインターネットに発行」機能は存在するが、これが利用するOffice.com側の旧公開サービスは多くのMicrosoft 365テナントで既に無効化されており、動作が不安定（多くの環境でボタンがグレーアウトまたはエラーになる）。資料には推奨方法として記載しないことを提案
+- **Outlookモバイルアプリ**: カレンダー発行機能自体が存在しない
+
+このため、ユーザー向け資料には「ブラウザで `outlook.office.com` を開いて発行する」という手順を案内するのが最も混乱が少ない、との提案を行った。
+
+---
+
+## 13. 参考: 断念したAzure AD OAuth方式の記録（備忘）
 
 将来、御社の組織ポリシーが変更された場合や、他の組織での展開時にAzure AD OAuth方式が使える可能性もあるため、実施した作業内容を備忘として記録する。
 
