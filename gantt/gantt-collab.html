@@ -30222,6 +30222,8 @@ ${appendText}` : appendText;
      設定
   ──────────────────────────────────────────────── */
   var API_BASE = (window.__APP_BASE__ || '/WebGantt/') + 'api/calendar_import.php';
+  // docs/office-calendar-import-design.md 6.1節: Office(ICS連携)用の別APIエンドポイント
+  var OFFICE_API_BASE = (window.__APP_BASE__ || '/WebGantt/') + 'api/office_calendar_import.php';
   var MAX_RANGE_DAYS = 31; // 4.3節: 最大1ヵ月（サーバー側と同じ上限）
 
   /* ────────────────────────────────────────────────
@@ -30230,12 +30232,19 @@ ${appendText}` : appendText;
   var _overlay = null;
   var _body = null;
   var _screenState = {
+    provider: 'google',   // 'google' | 'office'（設計書6.1節: 連携先種別で画面B/Cの挙動を分岐）
     startDate: null,     // 画面B/Cで使う開始日 (YYYY-MM-DD)
     endDate: null,        // 終了日 (YYYY-MM-DD)
     events: [],           // list_events で取得した予定一覧
     selectedIds: {},       // 選択中の予定ID（画面C）
-    googleEmail: null
+    googleEmail: null,
+    officeDisplayLabel: null // Office(ICS連携)の連携中ラベル（設計書3.3節）
   };
+
+  // 現在の連携先種別に応じたAPIベースURLを返す（設計書6.1節）
+  function _apiBaseFor() {
+    return _screenState.provider === 'office' ? OFFICE_API_BASE : API_BASE;
+  }
 
   /* ────────────────────────────────────────────────
      ユーティリティ（内部自前実装。既存 IIFE の private 関数には依存しない）
@@ -30328,15 +30337,15 @@ ${appendText}` : appendText;
         '<span class="ext-cal-menu-label">Googleカレンダー</span>' +
         '<span class="ext-cal-menu-badge">&gt;</span>' +
       '</div>' +
-      '<div class="ext-cal-menu-item disabled" id="extCalOfficeItem">' +
+      '<div class="ext-cal-menu-item" id="extCalOfficeItem">' +
         '<span class="ext-cal-menu-icon">📧</span>' +
-        '<span class="ext-cal-menu-label">Officeカレンダー（準備中）</span>' +
+        '<span class="ext-cal-menu-label">Outlookカレンダー（ICS連携）</span>' +
         '<span class="ext-cal-menu-badge">&gt;</span>' +
       '</div>';
     var googleItem = document.getElementById('extCalGoogleItem');
     if (googleItem) googleItem.onclick = function () { checkStatusAndRender(); };
     var officeItem = document.getElementById('extCalOfficeItem');
-    if (officeItem) officeItem.onclick = function () { _showToast('Officeカレンダー連携は現在準備中です。'); };
+    if (officeItem) officeItem.onclick = function () { checkOfficeStatusAndRender(); };
   }
 
   function _backLinkHtml() {
@@ -30348,8 +30357,9 @@ ${appendText}` : appendText;
     if (link) link.onclick = function () { renderScreen0(); };
   }
 
-  // ── 連携状態を確認して画面A or Bを表示 ────────────
+  // ── 連携状態を確認して画面A or Bを表示（Google） ────────────
   function checkStatusAndRender() {
+    _screenState.provider = 'google';
     _setModalTitle('Googleカレンダー連携');
     _body.innerHTML = _backLinkHtml() + '<div class="ext-cal-loading">確認中…</div>';
     _bindBackLink();
@@ -30372,7 +30382,7 @@ ${appendText}` : appendText;
       });
   }
 
-  // ── 画面A: 未連携時 ──────────────────────────────
+  // ── 画面A: 未連携時（Google） ──────────────────────────────
   function renderScreenA() {
     _body.innerHTML =
       _backLinkHtml() +
@@ -30387,16 +30397,130 @@ ${appendText}` : appendText;
     };
   }
 
+  /* ────────────────────────────────────────────────
+     Outlookカレンダー（ICS連携）専用の画面群
+     参照: docs/office-calendar-import-design.md 3節
+     画面B/C・importXxxCalendarEvents()はGoogle版とほぼ共通ロジックのため
+     _screenState.provider で分岐し、画面A（3.2節）のみ完全に別実装とする。
+  ──────────────────────────────────────────────── */
+
+  // ── 連携状態を確認して画面A or Bを表示（Office/ICS） ────────
+  function checkOfficeStatusAndRender() {
+    _screenState.provider = 'office';
+    _setModalTitle('Outlookカレンダー連携（ICS連携）');
+    _body.innerHTML = _backLinkHtml() + '<div class="ext-cal-loading">確認中…</div>';
+    _bindBackLink();
+    fetch(OFFICE_API_BASE + '?action=status', { credentials: 'include' })
+      .then(function (res) {
+        if (!res.ok) throw new Error('status http ' + res.status);
+        return res.json();
+      })
+      .then(function (data) {
+        if (data && data.connected) {
+          _screenState.officeDisplayLabel = data.displayLabel || null;
+          renderScreenB();
+        } else {
+          renderScreenAOffice();
+        }
+      })
+      .catch(function (err) {
+        console.error('[ExtCal] Office status確認失敗:', err);
+        renderScreenAOffice();
+      });
+  }
+
+  // ── 画面A: 未連携時（Office/ICS） — 設計書3.2節（本機能の核心的変更点） ──
+  function renderScreenAOffice() {
+    _body.innerHTML =
+      _backLinkHtml() +
+      '<p style="margin:0 0 12px;color:var(--text-sub,#5f6775);">' +
+        'Outlookの予定表を連携すると、予定をガントチャートのタスクとして取り込めます。' +
+      '</p>' +
+      '<div style="margin:0 0 14px;padding:10px 12px;background:var(--bg-subtle,#fafbfc);border-radius:6px;font-size:12px;color:var(--text-sub,#5f6775);line-height:1.7;">' +
+        '<strong style="color:var(--text-main,#2f3441);">【連携手順】</strong><br>' +
+        '1. Outlook on the web (outlook.office.com) にサインイン<br>' +
+        '2. 設定 &rarr; 予定表 &rarr; 共有予定表 を開く<br>' +
+        '3. 「予定表を公開する」でご自身の予定表を選択、アクセス許可は「完全な詳細」を選択して公開<br>' +
+        '4. 発行された「ICS」リンクをコピーし、下記の入力欄に貼り付けてください' +
+      '</div>' +
+      '<div class="ext-cal-row" style="justify-content:flex-start;"><label style="width:auto;text-align:left;">ICS購読リンク</label></div>' +
+      '<input type="url" id="extCalIcsUrlInput" placeholder="https://outlook.office365.com/owa/calendar/..." ' +
+        'style="width:100%;box-sizing:border-box;padding:7px 10px;border:1px solid var(--line-strong,#dce2e8);border-radius:6px;font-size:13px;margin-bottom:8px;">' +
+      '<div id="extCalIcsError" class="ext-cal-error" style="display:none;"></div>' +
+      '<p style="margin:0 0 4px;font-size:11px;color:var(--danger,#d9534f);">' +
+        '※このリンクを知っている人は誰でも予定表の内容を閲覧できます。第三者に共有しないでください。' +
+      '</p>' +
+      '<p style="margin:0 0 16px;font-size:11px;color:var(--text-muted,#8a93a3);">' +
+        '※予定の変更がここに反映されるまで、数十分〜半日程度かかる場合があります' +
+      '</p>' +
+      '<div class="ext-cal-footer-actions">' +
+        '<button type="button" class="ext-cal-btn primary" id="extCalOfficeConnectBtn">連携する</button>' +
+      '</div>';
+    _bindBackLink();
+
+    var connectBtn = document.getElementById('extCalOfficeConnectBtn');
+    if (connectBtn) connectBtn.onclick = function () {
+      var input = document.getElementById('extCalIcsUrlInput');
+      var errEl = document.getElementById('extCalIcsError');
+      var icsUrl = input ? input.value.trim() : '';
+      if (errEl) errEl.style.display = 'none';
+
+      if (!icsUrl || !/^https:\/\//i.test(icsUrl)) {
+        if (errEl) { errEl.textContent = 'https:// から始まるICS購読リンクを入力してください。'; errEl.style.display = 'block'; }
+        return;
+      }
+
+      connectBtn.disabled = true;
+      connectBtn.textContent = '確認中…';
+      fetch(OFFICE_API_BASE + '?action=connect', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ics_url: icsUrl })
+      })
+        .then(function (res) {
+          if (!res.ok) {
+            return res.json().catch(function () { return {}; }).then(function (errData) {
+              throw new Error(errData && errData.error ? errData.error : ('connect http ' + res.status));
+            });
+          }
+          return res.json();
+        })
+        .then(function (data) {
+          _screenState.officeDisplayLabel = (data && data.displayLabel) || null;
+          _showToast('Outlookカレンダーと連携しました。');
+          renderScreenB();
+        })
+        .catch(function (err) {
+          console.error('[ExtCal] Office connect失敗:', err);
+          if (errEl) {
+            errEl.textContent = err && err.message ? err.message : '連携に失敗しました。URLが正しいか、公開設定が有効か確認してください';
+            errEl.style.display = 'block';
+          }
+          connectBtn.disabled = false;
+          connectBtn.textContent = '連携する';
+        });
+    };
+  }
+
   // ── 画面B: 連携済み時（期間選択） ─────────────────
+  // 設計書3.3節: Google/Office(ICS連携)共通ロジック。連携中アカウント表示のみ分岐する。
   function renderScreenB() {
     if (!_screenState.startDate || !_screenState.endDate) {
       var today = new Date();
       _screenState.startDate = _formatIsoDate(today);
       _screenState.endDate = _addDaysToIso(_screenState.startDate, 7);
     }
-    var emailHtml = _screenState.googleEmail
-      ? '<div class="ext-cal-account-info">連携中のアカウント: ' + _escapeHtml(_screenState.googleEmail) + '</div>'
-      : '';
+    var emailHtml;
+    if (_screenState.provider === 'office') {
+      emailHtml = '<div class="ext-cal-account-info">' +
+        (_screenState.officeDisplayLabel ? _escapeHtml(_screenState.officeDisplayLabel) : 'Outlook予定表と連携中') +
+        '</div>';
+    } else {
+      emailHtml = _screenState.googleEmail
+        ? '<div class="ext-cal-account-info">連携中のアカウント: ' + _escapeHtml(_screenState.googleEmail) + '</div>'
+        : '';
+    }
     _body.innerHTML =
       '<div class="ext-cal-header-row">' +
         _backLinkHtml() +
@@ -30465,16 +30589,23 @@ ${appendText}` : appendText;
 
     var disconnectBtn = document.getElementById('extCalDisconnectBtn');
     if (disconnectBtn) disconnectBtn.onclick = function () {
-      if (!window.confirm('Googleカレンダーとの連携を解除しますか？')) return;
-      fetch(API_BASE + '?action=disconnect', { method: 'POST', credentials: 'include' })
+      var isOffice = _screenState.provider === 'office';
+      var confirmMsg = isOffice ? 'Outlookカレンダーとの連携を解除しますか？' : 'Googleカレンダーとの連携を解除しますか？';
+      if (!window.confirm(confirmMsg)) return;
+      fetch(_apiBaseFor() + '?action=disconnect', { method: 'POST', credentials: 'include' })
         .then(function (res) {
           if (!res.ok) throw new Error('disconnect http ' + res.status);
           return res.json();
         })
         .then(function () {
-          _screenState.googleEmail = null;
           _showToast('連携を解除しました。');
-          renderScreenA();
+          if (isOffice) {
+            _screenState.officeDisplayLabel = null;
+            renderScreenAOffice();
+          } else {
+            _screenState.googleEmail = null;
+            renderScreenA();
+          }
         })
         .catch(function (err) {
           console.error('[ExtCal] disconnect失敗:', err);
@@ -30487,7 +30618,7 @@ ${appendText}` : appendText;
   function loadEventsAndRenderScreenC() {
     _body.innerHTML = _backLinkHtml() + '<div class="ext-cal-loading">予定を読み込んでいます…</div>';
     _bindBackLink();
-    var url = API_BASE + '?action=list_events&start_date=' + encodeURIComponent(_screenState.startDate) +
+    var url = _apiBaseFor() + '?action=list_events&start_date=' + encodeURIComponent(_screenState.startDate) +
       '&end_date=' + encodeURIComponent(_screenState.endDate);
     fetch(url, { credentials: 'include' })
       .then(function (res) {
@@ -30569,7 +30700,10 @@ ${appendText}` : appendText;
         _showToast('インポートする予定を選択してください。');
         return;
       }
-      var count = importGoogleCalendarEvents(selectedEvents);
+      // 設計書6.2節: 連携先種別で生成関数を分岐（COLLAB-HOOKのsubtypeも異なる）
+      var count = (_screenState.provider === 'office')
+        ? importOfficeCalendarEvents(selectedEvents)
+        : importGoogleCalendarEvents(selectedEvents);
       _showToast(count + '件のタスクを追加しました。');
       closeModal();
     };
@@ -30672,6 +30806,102 @@ ${appendText}` : appendText;
   }
   // 他モジュールからも呼べるよう公開（デバッグ・将来拡張用）
   window._ganttImportGoogleCalendarEvents = importGoogleCalendarEvents;
+
+  /* ────────────────────────────────────────────────
+     設計書6.2節: Outlookカレンダー（ICS連携）版タスク生成・追加処理
+     importGoogleCalendarEvents() と全く同一ロジック（内部実装を複製し、
+     COLLAB-HOOKのsubtypeのみ 'office_calendar_import' に変更）。
+  ──────────────────────────────────────────────── */
+  function importOfficeCalendarEvents(events) {
+    var state = _getState();
+    if (!state) {
+      console.error('[ExtCal] state取得失敗。インポートを中止します。');
+      return 0;
+    }
+
+    // Undo履歴に現在の状態を積む（既存 pushUndo と同等の処理を自前実装）
+    try {
+      state.undoStack.push(JSON.parse(JSON.stringify({
+        project: state.project,
+        rows: state.rows,
+        tasks: state.tasks,
+        dependencies: state.dependencies,
+        archivePool: state.archivePool,
+        viewOptions: state.viewOptions,
+        systemOptions: state.systemOptions,
+        holidayCalendar: state.holidayCalendar,
+        selectedTaskId: state.selectedTaskId,
+        selectedTaskIds: state.selectedTaskIds,
+        selectionAnchorTaskId: state.selectionAnchorTaskId,
+        selectedDependencyId: state.selectedDependencyId,
+        selectedDependencyIds: state.selectedDependencyIds,
+        fileName: state.fileName
+      })));
+    } catch (e) { console.warn('[ExtCal] undoスナップショット作成失敗:', e); }
+
+    var newRows = [];
+    var newTasks = [];
+    events.forEach(function (ev) {
+      var rowId = _generateId('row');
+      var taskId = _generateId('task');
+      newRows.push({
+        id: rowId,
+        name: ev.summary || '(無題の予定)',
+        level: 0,
+        parentId: null,
+        collapsed: false
+      });
+      newTasks.push({
+        id: taskId,
+        rowId: rowId,
+        name: ev.summary || '(無題の予定)',
+        start: ev.startDate || null,
+        end: ev.endDate || null,
+        color: '',
+        textColor: '',
+        content: '',
+        memo: '',
+        assignee: '',
+        assigneeUserId: null,
+        locked: false,
+        anchored: false,
+        status: 'not_started',
+        actualStart: null,
+        actualEnd: null
+      });
+    });
+
+    // 第7節確定要件: 現在開いているプロジェクトの最上位（第0階層）末尾に追加
+    state.rows.push.apply(state.rows, newRows);
+    state.tasks.push.apply(state.tasks, newTasks);
+
+    if (typeof window._ganttRender === 'function') window._ganttRender();
+    if (typeof window._ganttUpdateUndoButton === 'function') window._ganttUpdateUndoButton();
+
+    // [COLLAB-HOOK] Outlookカレンダーインポート（6.2節: state_sync を1回だけ発火）
+    try {
+      var snapshot = {
+        version: 5,
+        project: state.project,
+        viewOptions: state.viewOptions,
+        systemOptions: state.systemOptions,
+        holidayCalendar: state.holidayCalendar,
+        rows: state.rows,
+        tasks: state.tasks,
+        dependencies: state.dependencies,
+        archivePool: state.archivePool
+      };
+      document.dispatchEvent(new CustomEvent('gantt:op', { detail: {
+        op: 'state_sync',
+        subtype: 'office_calendar_import',
+        snapshot: JSON.parse(JSON.stringify(snapshot))
+      }}));
+    } catch (e) { console.warn('[ExtCal] state_sync発火失敗:', e); }
+
+    return newTasks.length;
+  }
+  // 他モジュールからも呼べるよう公開（デバッグ・将来拡張用）
+  window._ganttImportOfficeCalendarEvents = importOfficeCalendarEvents;
 
   /* ────────────────────────────────────────────────
      OAuthコールバック完了後のモーダル復帰処理

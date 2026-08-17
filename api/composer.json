@@ -1,6 +1,7 @@
 {
     "require": {
         "phpmailer/phpmailer": "^7.1",
-        "google/apiclient": "^2.15"
+        "google/apiclient": "^2.15",
+        "sabre/vobject": "^4.5"
     }
 }

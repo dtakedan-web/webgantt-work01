@@ -513,6 +513,8 @@
     'undo':             '取り消しを実行',
     'redo':             'やり直しを実行',
     'import':           'インポート',
+    'calendar_import':  '外部カレンダーからインポート',
+    'office_calendar_import': '外部カレンダーからインポート',
     'holiday':          '祝日(休日)を設定',
     'system_setting':   'システム設定を変更',
     'annotation':       '引き出し線注記操作',
