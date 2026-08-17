@@ -1408,7 +1408,7 @@
       projectBtn.id = 'collab-project-btn';
       projectBtn.textContent = 'プロジェクト管理';
       projectBtn.href = '#';
-      applyBtnStyle(projectBtn, '#90caf9', 'rgba(144,202,249,0.45)');
+      applyBtnStyle(projectBtn, '#a5d6a7', 'rgba(165,214,167,0.45)');
       projectBtn.onclick = function (e) {
         e.preventDefault();
         // 現在のプロジェクトIDを記憶（戻る時に復元するため）
@@ -1824,7 +1824,8 @@
       }
       // ────────────────────────────────────────────────────────────
 
-      // 表示順: 同期状態 → ユーザー名 → [ログアウト] [アカウント管理] [プロジェクト管理] [プロジェクト切替▾] → (右端)プレゼンス
+      // 表示順: 同期状態 → ユーザー名 → [ログアウト] [アカウント管理] [プロジェクト管理] [プロジェクト切替▾]
+      //         → [外部連携] [変更フィード📢] [通知🔔] → (右端)プレゼンス
       statusBar.appendChild(dot);
       statusBar.appendChild(label);
       statusBar.appendChild(userEl);
@@ -1841,11 +1842,13 @@
         // id経由でクリックを委譲できるようにする。
         statusBar.style.display = 'none';
       }
+      // 外部連携: Googleカレンダー等からの予定インポート機能ボタンを追加
+      // 参照: docs/google-calendar-import-design.md 4.1節
+      // 表示順: プロジェクト切替 → 外部連携 → 変更フィード → (通知🔔) の順にするため、
+      // フィードボタンより先に挿入する
+      _initExternalIntegrationUI(statusBar);
       // Phase 4: フィードボタンをステータスバーに追加（presenceEl の左に挿入）
       _initFeedUI(statusBar);
-      // 外部連携: Googleカレンダー等からの予定インポート機能ボタンを追加（feedBtnと同パターン）
-      // 参照: docs/google-calendar-import-design.md 4.1節
-      _initExternalIntegrationUI(statusBar);
 
       const toastContainer = document.createElement('div');
       toastContainer.id = 'collab-toast-container';
@@ -2005,24 +2008,20 @@
 
     feedBtn.appendChild(feedBtnLabel);
 
-    // ボタンスタイル（他のボタンと統一）
+    // ボタンスタイル（🔔通知ベルボタンと同じ表現：枠線・背景なし）
     Object.assign(feedBtn.style, {
       display:         'inline-flex',
       alignItems:      'center',
-      height:          '17px',
-      padding:         '0 7px',
-      fontSize:        '11px',
-      color:           '#a5d6a7',
-      background:      'rgba(255,255,255,0.07)',
-      border:          '1px solid rgba(165,214,167,0.45)',
-      borderRadius:    '4px',
-      textDecoration:  'none',
+      background:      'none',
+      border:          'none',
+      color:           '#ccc',
       cursor:          'pointer',
+      fontSize:        '15px',
+      padding:         '0 4px',
+      textDecoration:  'none',
       lineHeight:      '1',
-      transition:      'background 0.15s',
+      flexShrink:      '0',
     });
-    feedBtn.onmouseenter = function () { feedBtn.style.background = 'rgba(255,255,255,0.15)'; };
-    feedBtn.onmouseleave = function () { feedBtn.style.background = 'rgba(255,255,255,0.07)'; };
 
     feedBtn.onclick = function (e) {
       e.preventDefault();
@@ -2081,25 +2080,21 @@
     btn.href = '#';
     btn.title = '外部カレンダーから予定をインポート';
 
-    const icon = document.createElement('span');
-    icon.textContent = '🔗';
-    icon.style.marginRight = '3px';
     const label = document.createElement('span');
     label.textContent = '外部連携';
 
-    btn.appendChild(icon);
     btn.appendChild(label);
 
-    // ボタンスタイル（feedBtnと統一）
+    // ボタンスタイル（黄色系）
     Object.assign(btn.style, {
       display:         'inline-flex',
       alignItems:      'center',
       height:          '17px',
       padding:         '0 7px',
       fontSize:        '11px',
-      color:           '#a5d6a7',
+      color:           '#ffe082',
       background:      'rgba(255,255,255,0.07)',
-      border:          '1px solid rgba(165,214,167,0.45)',
+      border:          '1px solid rgba(255,224,130,0.45)',
       borderRadius:    '4px',
       textDecoration:  'none',
       cursor:          'pointer',
@@ -2115,14 +2110,11 @@
       document.dispatchEvent(new CustomEvent('gantt:openExternalIntegration'));
     };
 
-    // feedBtn の直前（＝presenceEl の左隣より一つ手前）に挿入。
-    // 表示順: ... [フィード📢] [外部連携🔗] (右端)プレゼンス
-    const feedBtnEl = statusBarEl.querySelector('#collab-feed-btn');
+    // presenceEl の直前に挿入（本関数は _initFeedUI より先に呼ばれるため、
+    // 表示順: ... [プロジェクト切替] [外部連携] [フィード📢] (右端)プレゼンス となる）
     const presenceEl = statusBarEl.querySelector('#collab-presence');
     if (presenceEl) {
       statusBarEl.insertBefore(btn, presenceEl);
-    } else if (feedBtnEl) {
-      statusBarEl.appendChild(btn);
     } else {
       statusBarEl.appendChild(btn);
     }
