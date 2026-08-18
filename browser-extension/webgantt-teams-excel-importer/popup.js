@@ -5,7 +5,9 @@
  * 処理フロー（設計書8.3節）:
  *  1. storageからトークン読込。未設定なら設定画面への導線を表示
  *  2. list_projects でプロジェクト一覧取得
- *  3. 「Excelを取得」ボタン:
+ *  3. ポップアップを開いたタイミングで自動的にExcel取得処理を実行する（新規要望）。
+ *     「再取得」ボタンは、SharePointへの再ログイン後やExcel更新直後の
+ *     手動リトライ用として残す:
  *     a. SharePoint currentuser API で疎通確認
  *     b. shares API で downloadUrl を取得
  *     c. downloadUrl から Excel実体(ArrayBuffer)を取得
@@ -45,6 +47,12 @@ async function init() {
     state.taskFilter = e.target.value;
     renderTaskList();
   });
+  // 名称クイック選択ドロップダウン（新規要望2）：選択するとフィルタ入力欄に反映される
+  document.getElementById('taskFilterNameSelect').addEventListener('change', function (e) {
+    state.taskFilter = e.target.value;
+    document.getElementById('taskFilterInput').value = e.target.value;
+    renderTaskList();
+  });
 
   const stored = await chromeStorageGet(['wgtToken', 'wgtShareUrl']);
   if (!stored.wgtToken) {
@@ -59,6 +67,13 @@ async function init() {
   document.getElementById('mainUi').style.display = 'block';
 
   await loadProjects();
+
+  // ポップアップを開いたタイミングで自動的にExcel取得を行う（新規要望）。
+  // 共有リンクが未設定の場合はonFetchClick側で分かりやすいエラーメッセージが出るため、
+  // ここでは特に分岐せずそのまま呼び出す。
+  if (state.shareUrl) {
+    await onFetchClick();
+  }
 }
 
 function chromeStorageGet(keys) {
@@ -329,7 +344,48 @@ function recomputeTasks() {
     };
   });
 
+  updateTaskFilterNameOptions();
   renderTaskList();
+}
+
+/**
+ * 名称クイック選択ドロップダウン（新規要望2）の選択肢を、現在の
+ * state.tasks に含まれる担当者名・作業名のユニーク一覧で更新する。
+ * フィルタ欄への手入力が面倒なユーザー向けに、既知の名称をクリックで
+ * 選べるようにするための機能。現在選択中の値は可能な範囲で維持する。
+ */
+function updateTaskFilterNameOptions() {
+  const select = document.getElementById('taskFilterNameSelect');
+  if (!select) return;
+  const currentValue = select.value;
+
+  const names = new Set();
+  state.tasks.forEach(function (t) {
+    if (t.assignee) names.add(t.assignee);
+    if (t.taskName) names.add(t.taskName);
+  });
+  const sortedNames = Array.from(names).sort(function (a, b) {
+    return a.localeCompare(b, 'ja');
+  });
+
+  select.innerHTML = '';
+  const emptyOpt = document.createElement('option');
+  emptyOpt.value = '';
+  emptyOpt.textContent = '(名称を選択)';
+  select.appendChild(emptyOpt);
+  sortedNames.forEach(function (name) {
+    const opt = document.createElement('option');
+    opt.value = name;
+    opt.textContent = name;
+    select.appendChild(opt);
+  });
+
+  // 直前の選択値が新しい一覧にも存在すれば維持する
+  if (sortedNames.indexOf(currentValue) !== -1) {
+    select.value = currentValue;
+  } else {
+    select.value = '';
+  }
 }
 
 /**
@@ -358,7 +414,7 @@ function getFilteredTaskIndexes() {
 function renderTaskList() {
   const section = document.getElementById('taskSection');
   const container = document.getElementById('taskList');
-  const filterInput = document.getElementById('taskFilterInput');
+  const filterRow = document.getElementById('taskFilterRow');
   const countEl = document.getElementById('taskCount');
   container.innerHTML = '';
 
@@ -367,7 +423,7 @@ function renderTaskList() {
     return;
   }
   section.style.display = 'block';
-  if (filterInput) filterInput.style.display = 'block';
+  if (filterRow) filterRow.style.display = 'flex';
 
   const filteredIndexes = getFilteredTaskIndexes();
 
