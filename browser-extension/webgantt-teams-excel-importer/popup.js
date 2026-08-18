@@ -169,10 +169,14 @@ async function onFetchClick() {
 
     // デバッグ用ログ（週ブロックが検出できない場合の原因調査用。
     // ポップアップを右クリック→「検証」→Consoleタブで確認できる）
-    console.log('[WGT debug] シート一覧:', workbook.SheetNames);
+    // ※ Consoleはオブジェクトを既定で折りたたみ表示するため、
+    //   「Save as...」で保存しても展開していない部分は文字列化されない。
+    //   そのため必ず JSON.stringify() 済みの文字列としてログに出す。
+    console.log('[WGT debug] シート一覧:', JSON.stringify(workbook.SheetNames));
     console.log('[WGT debug] 選択されたシート名:', pickedSheetName);
     console.log('[WGT debug] シート範囲(!ref):', sheet && sheet['!ref']);
-    console.log('[WGT debug] 検出された週ブロック数:', blocks.length, blocks);
+    console.log('[WGT debug] 検出された週ブロック数:', blocks.length);
+    console.log('[WGT debug] 検出された週ブロック詳細(JSON):', JSON.stringify(blocks));
     if (blocks.length === 0 && sheet && sheet['!ref']) {
       const dbgRange = XLSX.utils.decode_range(sheet['!ref']);
       const aColDump = [];
@@ -181,7 +185,7 @@ async function onFetchClick() {
         const cell = sheet[ref];
         aColDump.push({ row: r, value: cell ? cell.v : null, type: cell ? cell.t : null });
       }
-      console.log('[WGT debug] A列(先頭列)の内容ダンプ(先頭60行):', aColDump);
+      console.log('[WGT debug] A列(先頭列)の内容ダンプ(先頭60行・JSON):', JSON.stringify(aColDump));
 
       // B4:F4（Excel上の行番号。0始まりでは row=3, col=1〜5）付近を含む
       // 先頭10行×先頭10列を丸ごとダンプする（日付ヘッダー行が検出されない
@@ -202,7 +206,11 @@ async function onFetchClick() {
         }
         gridDump.push(rowDump);
       }
-      console.log('[WGT debug] 先頭10行×先頭10列の詳細ダンプ(値/型/書式/数式):', gridDump);
+      console.log('[WGT debug] 先頭10行×先頭10列の詳細ダンプ(値/型/書式/数式・JSON):', JSON.stringify(gridDump));
+      // 1行ずつ改行して出す版（1行のJSON文字列が長すぎて折り返しが読みにくい場合の保険）
+      gridDump.forEach(function (rowDump, idx) {
+        console.log('[WGT debug] grid row ' + idx + ':', JSON.stringify(rowDump));
+      });
     }
 
     state.weeks = blocks.map(function (b, idx) {
