@@ -34,6 +34,13 @@ async function init() {
     chrome.runtime.openOptionsPage();
   });
 
+  // Manifest V3のCSPによりHTML側のinline onclick属性は使用できないため、
+  // ここでイベントリスナーを登録する（設計書8.3節）
+  document.getElementById('fetchBtn').addEventListener('click', onFetchClick);
+  document.getElementById('selectAllLink').addEventListener('click', function () { setAllChecks(true); });
+  document.getElementById('deselectAllLink').addEventListener('click', function () { setAllChecks(false); });
+  document.getElementById('importBtn').addEventListener('click', onImportClick);
+
   const stored = await chromeStorageGet(['wgtToken', 'wgtShareUrl']);
   if (!stored.wgtToken) {
     document.getElementById('noTokenNotice').style.display = 'block';

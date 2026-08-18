@@ -8,6 +8,7 @@ document.addEventListener('DOMContentLoaded', function () {
     if (data.wgtToken) document.getElementById('tokenInput').value = data.wgtToken;
     if (data.wgtShareUrl) document.getElementById('shareUrlInput').value = data.wgtShareUrl;
   });
+  document.getElementById('saveBtn').addEventListener('click', saveSettings);
 });
 
 function showMsg(text, type) {
