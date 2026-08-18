@@ -182,6 +182,27 @@ async function onFetchClick() {
         aColDump.push({ row: r, value: cell ? cell.v : null, type: cell ? cell.t : null });
       }
       console.log('[WGT debug] A列(先頭列)の内容ダンプ(先頭60行):', aColDump);
+
+      // B4:F4（Excel上の行番号。0始まりでは row=3, col=1〜5）付近を含む
+      // 先頭10行×先頭10列を丸ごとダンプする（日付ヘッダー行が検出されない
+      // 原因調査用。セルの値だけでなく型(t)・書式(z)・数式(f)も出す）
+      const gridDump = [];
+      for (let r = dbgRange.s.r; r <= Math.min(dbgRange.e.r, dbgRange.s.r + 9); r++) {
+        const rowDump = [];
+        for (let c = dbgRange.s.c; c <= Math.min(dbgRange.e.c, dbgRange.s.c + 9); c++) {
+          const ref = XLSX.utils.encode_cell({ r, c });
+          const cell = sheet[ref];
+          rowDump.push({
+            ref: ref,
+            v: cell ? cell.v : null,
+            t: cell ? cell.t : null,   // 型: n=数値, s=文字列, d=日付, b=真偽値
+            z: cell ? cell.z : null,   // 表示書式
+            f: cell ? cell.f : null,   // 数式（あれば）
+          });
+        }
+        gridDump.push(rowDump);
+      }
+      console.log('[WGT debug] 先頭10行×先頭10列の詳細ダンプ(値/型/書式/数式):', gridDump);
     }
 
     state.weeks = blocks.map(function (b, idx) {
