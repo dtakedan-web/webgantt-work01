@@ -163,8 +163,27 @@ async function onFetchClick() {
     state.workbook = workbook;
 
     // 週ブロックのみ先に検出してチェックボックスを表示
-    const sheet = workbook.Sheets[WGT.pickDefaultSheet(workbook)];
+    const pickedSheetName = WGT.pickDefaultSheet(workbook);
+    const sheet = workbook.Sheets[pickedSheetName];
     const blocks = WGT.detectWeekBlocks(sheet);
+
+    // デバッグ用ログ（週ブロックが検出できない場合の原因調査用。
+    // ポップアップを右クリック→「検証」→Consoleタブで確認できる）
+    console.log('[WGT debug] シート一覧:', workbook.SheetNames);
+    console.log('[WGT debug] 選択されたシート名:', pickedSheetName);
+    console.log('[WGT debug] シート範囲(!ref):', sheet && sheet['!ref']);
+    console.log('[WGT debug] 検出された週ブロック数:', blocks.length, blocks);
+    if (blocks.length === 0 && sheet && sheet['!ref']) {
+      const dbgRange = XLSX.utils.decode_range(sheet['!ref']);
+      const aColDump = [];
+      for (let r = dbgRange.s.r; r <= Math.min(dbgRange.e.r, dbgRange.s.r + 60); r++) {
+        const ref = XLSX.utils.encode_cell({ r, c: dbgRange.s.c });
+        const cell = sheet[ref];
+        aColDump.push({ row: r, value: cell ? cell.v : null, type: cell ? cell.t : null });
+      }
+      console.log('[WGT debug] A列(先頭列)の内容ダンプ(先頭60行):', aColDump);
+    }
+
     state.weeks = blocks.map(function (b, idx) {
       return {
         index: idx,
@@ -176,7 +195,11 @@ async function onFetchClick() {
 
     renderWeekList();
     recomputeTasks();
-    showMsg('Excelを取得しました。取り込む週・予定を選択してください', 'success');
+    if (blocks.length === 0) {
+      showMsg('Excelは取得できましたが、週ブロックを検出できませんでした。詳細はポップアップを右クリック→「検証」→Consoleタブをご確認ください', 'error');
+    } else {
+      showMsg('Excelを取得しました。取り込む週・予定を選択してください', 'success');
+    }
   } catch (err) {
     console.error(err);
     showMsg('取得に失敗しました: ' + err.message, 'error');
