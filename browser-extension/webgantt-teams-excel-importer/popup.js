@@ -22,8 +22,9 @@ let state = {
   shareUrl: null,
   projects: [],       // [{ projectId, name, members: [displayName,...] }]
   workbook: null,      // XLSX.read() の結果（再利用のためキャッシュ）
-  weeks: [],           // [{ index, startDate, endDate, checked }]
+  weeks: [],           // [{ index, startDate, endDate, checked }] ※日付昇順(古い→新しい)で保持
   tasks: [],           // [{ assignee, taskName, startDate, endDate, checked }]
+  taskFilter: '',      // ③タスク一覧の名前フィルタ文字列（担当者名・作業名の両方を対象）
 };
 
 document.addEventListener('DOMContentLoaded', init);
@@ -40,6 +41,10 @@ async function init() {
   document.getElementById('selectAllLink').addEventListener('click', function () { setAllChecks(true); });
   document.getElementById('deselectAllLink').addEventListener('click', function () { setAllChecks(false); });
   document.getElementById('importBtn').addEventListener('click', onImportClick);
+  document.getElementById('taskFilterInput').addEventListener('input', function (e) {
+    state.taskFilter = e.target.value;
+    renderTaskList();
+  });
 
   const stored = await chromeStorageGet(['wgtToken', 'wgtShareUrl']);
   if (!stored.wgtToken) {
@@ -213,12 +218,17 @@ async function onFetchClick() {
       });
     }
 
+    // state.weeks は common.js 側の並び順（日付昇順＝古い→新しい）のまま保持する。
+    // index は WGT.extractTasksFromWorkbook() の selectedWeekIndexes と対応させるため、
+    // blocks配列の並び順のまま採番する（表示順序はrenderWeekList側で逆順にする）。
+    // デフォルトのチェック状態は「最新の1週間のみON」とする（新規要望）。
+    const lastIdx = blocks.length - 1;
     state.weeks = blocks.map(function (b, idx) {
       return {
         index: idx,
         startDate: b.dateColumns[0].date,
         endDate: b.dateColumns[b.dateColumns.length - 1].date,
-        checked: true,
+        checked: idx === lastIdx, // 最新週（配列末尾＝日付が最も新しい週）のみデフォルトON
       };
     });
 
@@ -278,7 +288,11 @@ function renderWeekList() {
     container.innerHTML = '<div style="font-size:11px;color:#dc2626;">週ブロックが検出できませんでした</div>';
     return;
   }
-  state.weeks.forEach(function (w) {
+  // state.weeks自体は日付昇順(古い→新しい)を保持したまま、表示のみ新しい週が
+  // 上に来るよう逆順にする（新規要望）。indexプロパティで元のブロックと
+  // 対応しているため、並び替えは表示用コピーに対してのみ行う。
+  const displayWeeks = state.weeks.slice().reverse();
+  displayWeeks.forEach(function (w) {
     const label = document.createElement('label');
     const cb = document.createElement('input');
     cb.type = 'checkbox';
@@ -311,16 +325,41 @@ function recomputeTasks() {
       taskName: t.taskName,
       startDate: t.startDate,
       endDate: t.endDate,
-      checked: true,
+      checked: false, // デフォルトは非選択（新規要望：ユーザーが個別に選ぶ方式）
     };
   });
 
   renderTaskList();
 }
 
+/**
+ * 現在の名前フィルタ文字列(state.taskFilter)にマッチするタスクの
+ * (元のstate.tasks配列上の)インデックス一覧を返す。
+ * 作業名(taskName)・担当者名(assignee)のどちらかに部分一致すれば対象とする。
+ * フィルタが空文字の場合は全件を返す。
+ */
+function getFilteredTaskIndexes() {
+  const keyword = (state.taskFilter || '').trim().toLowerCase();
+  const indexes = [];
+  state.tasks.forEach(function (t, idx) {
+    if (keyword === '') {
+      indexes.push(idx);
+      return;
+    }
+    const taskName = (t.taskName || '').toLowerCase();
+    const assignee = (t.assignee || '').toLowerCase();
+    if (taskName.indexOf(keyword) !== -1 || assignee.indexOf(keyword) !== -1) {
+      indexes.push(idx);
+    }
+  });
+  return indexes;
+}
+
 function renderTaskList() {
   const section = document.getElementById('taskSection');
   const container = document.getElementById('taskList');
+  const filterInput = document.getElementById('taskFilterInput');
+  const countEl = document.getElementById('taskCount');
   container.innerHTML = '';
 
   if (state.tasks.length === 0) {
@@ -328,8 +367,22 @@ function renderTaskList() {
     return;
   }
   section.style.display = 'block';
+  if (filterInput) filterInput.style.display = 'block';
 
-  state.tasks.forEach(function (t, idx) {
+  const filteredIndexes = getFilteredTaskIndexes();
+
+  if (countEl) {
+    const checkedCount = state.tasks.filter(function (t) { return t.checked; }).length;
+    countEl.textContent = '表示 ' + filteredIndexes.length + ' / 全 ' + state.tasks.length + ' 件（選択中 ' + checkedCount + ' 件）';
+  }
+
+  if (filteredIndexes.length === 0) {
+    container.innerHTML = '<div style="font-size:11px;color:#8a93a3;padding:6px 0;">条件に一致する予定がありません</div>';
+    return;
+  }
+
+  filteredIndexes.forEach(function (idx) {
+    const t = state.tasks[idx];
     const item = document.createElement('div');
     item.className = 'task-item';
 
@@ -338,6 +391,7 @@ function renderTaskList() {
     cb.checked = t.checked;
     cb.addEventListener('change', function () {
       state.tasks[idx].checked = cb.checked;
+      updateTaskCountOnly();
     });
 
     const main = document.createElement('div');
@@ -359,8 +413,19 @@ function renderTaskList() {
   });
 }
 
+/** チェック操作のたびにリスト全体を再描画すると重いため、件数表示だけ更新する軽量版 */
+function updateTaskCountOnly() {
+  const countEl = document.getElementById('taskCount');
+  if (!countEl) return;
+  const filteredIndexes = getFilteredTaskIndexes();
+  const checkedCount = state.tasks.filter(function (t) { return t.checked; }).length;
+  countEl.textContent = '表示 ' + filteredIndexes.length + ' / 全 ' + state.tasks.length + ' 件（選択中 ' + checkedCount + ' 件）';
+}
+
+/** 全選択・全解除は「現在フィルタで表示されている行」のみを対象にする（新規要望・名前フィルタとの併用を考慮） */
 function setAllChecks(value) {
-  state.tasks.forEach(function (t) { t.checked = value; });
+  const filteredIndexes = getFilteredTaskIndexes();
+  filteredIndexes.forEach(function (idx) { state.tasks[idx].checked = value; });
   renderTaskList();
 }
 
