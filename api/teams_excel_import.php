@@ -72,13 +72,48 @@ function issueExtensionToken(mysqli $db, int $userId): string {
 }
 
 /**
+ * Authorization ヘッダーの値を取得する。
+ * サーバー環境（Apache+mod_php / PHP-FPM+FastCGI 等）によっては
+ * $_SERVER['HTTP_AUTHORIZATION'] にAuthorizationヘッダーが渡って来ない
+ * ことがあるため、getallheaders() / apache_request_headers() で
+ * フォールバックする（拡張機能からのBearer認証が「トークンが無効です」
+ * と誤判定される事象への対応）。
+ */
+function getAuthorizationHeaderValue(): string {
+  if (!empty($_SERVER['HTTP_AUTHORIZATION'])) {
+    return $_SERVER['HTTP_AUTHORIZATION'];
+  }
+  // 一部のFastCGI環境ではリダイレクトされた値に入ることがある
+  if (!empty($_SERVER['REDIRECT_HTTP_AUTHORIZATION'])) {
+    return $_SERVER['REDIRECT_HTTP_AUTHORIZATION'];
+  }
+  if (function_exists('getallheaders')) {
+    $headers = getallheaders();
+    foreach ($headers as $name => $value) {
+      if (strcasecmp($name, 'Authorization') === 0) {
+        return $value;
+      }
+    }
+  }
+  if (function_exists('apache_request_headers')) {
+    $headers = apache_request_headers();
+    foreach ($headers as $name => $value) {
+      if (strcasecmp($name, 'Authorization') === 0) {
+        return $value;
+      }
+    }
+  }
+  return '';
+}
+
+/**
  * Authorization: Bearer <token> ヘッダーから拡張機能専用トークンを取り出し、
  * 有効なユーザーIDを返す。無効・未指定の場合は null。
  * 既存の getSessionIdFromCookie() は sessions テーブルに紐づく別体系のため、
  * 本関数はそれとは独立に自前で Authorization ヘッダーを読む。
  */
 function getUserIdFromExtensionToken(mysqli $db): ?int {
-  $authHeader = $_SERVER['HTTP_AUTHORIZATION'] ?? '';
+  $authHeader = getAuthorizationHeaderValue();
   if (!preg_match('/^Bearer\s+(.+)$/i', $authHeader, $m)) {
     return null;
   }
