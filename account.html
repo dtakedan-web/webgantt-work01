@@ -343,7 +343,31 @@
       <div class="message" id="emailMessage"></div>
     </div>
 
+    <!-- Teams共有Excel連携 拡張機能トークン（新規タスク①） -->
+    <div class="card" id="teamsExcelExtensionSection">
+      <h2>拡張機能連携（Teams共有Excelインポート） <span class="badge">ベータ</span></h2>
+      <p style="font-size:13px; color:var(--text-sub); margin-bottom:16px;">
+        ブラウザ拡張機能（Edge/Chrome）からWebGanttへタスクを取り込むための認証トークンです。
+        拡張機能のオプション画面に、ここで発行したトークンを貼り付けて利用します。
+      </p>
 
+      <div id="extTokenStatusView">
+        <div class="hint" id="extTokenStatusText">状態を確認しています...</div>
+      </div>
+
+      <!-- 発行直後のみ表示する生トークン表示欄 -->
+      <div class="form-group" id="extTokenRevealGroup" style="display:none;">
+        <label>発行されたトークン（この画面を離れると再表示できません）</label>
+        <input type="text" id="extTokenRevealInput" readonly>
+        <div class="hint">拡張機能の「オプション」画面に貼り付けてください。他人に共有しないでください。</div>
+      </div>
+
+      <div class="btn-row">
+        <button class="btn btn-primary" id="extTokenIssueBtn" onclick="issueExtensionToken()">新規トークンを発行</button>
+        <button class="btn btn-danger" id="extTokenRevokeBtn" onclick="revokeExtensionToken()" style="display:none;">トークンを無効化</button>
+      </div>
+      <div class="message" id="extTokenMessage"></div>
+    </div>
 
     <!-- ユーザー登録（管理者のみ） -->
     <div class="card admin-only" id="registerCard">
@@ -480,6 +504,8 @@
           document.querySelectorAll('.admin-only').forEach(el => el.classList.add('visible'));
           await loadUserList();
         }
+        // 新規タスク①: 拡張機能トークンの発行状態を取得
+        await loadExtensionTokenStatus();
       } catch (err) {
         showMessage('pwMessage', '初期化エラー: ' + err.message, 'error');
       }
@@ -566,6 +592,96 @@
         }
       } catch (err) {
         showMessage('emailMessage', '通信エラー: ' + err.message, 'error');
+      }
+      showLoading(false);
+    }
+
+    // ─── Teams共有Excel連携 拡張機能トークン(新規タスク①) ──────
+    // 参照: docs/teams-excel-import-design.md 7.1節・11.3節
+    // 本セクションは既存機能（アカウント設定・ユーザー管理）とは独立した
+    // 「特殊（汎用性は低い）」機能として api/teams_excel_import.php のみを
+    // 呼び出す。将来この機能を撤去する場合は、このブロックと上記HTMLカード
+    // (#teamsExcelExtensionSection)を削除するだけでよい。
+
+    async function loadExtensionTokenStatus() {
+      const statusText = document.getElementById('extTokenStatusText');
+      try {
+        const res = await fetch('/WebGantt/api/teams_excel_import.php?action=token_status', {
+          credentials: 'include',
+        });
+        const data = await res.json();
+        if (data.error) {
+          statusText.textContent = '状態の取得に失敗しました: ' + data.error;
+          return;
+        }
+        renderExtensionTokenStatus(data);
+      } catch (err) {
+        statusText.textContent = '状態の取得に失敗しました（通信エラー）: ' + err.message;
+      }
+    }
+
+    function renderExtensionTokenStatus(data) {
+      const statusText = document.getElementById('extTokenStatusText');
+      const revokeBtn  = document.getElementById('extTokenRevokeBtn');
+      if (data.issued) {
+        const issuedAt = data.issuedAt ? new Date(data.issuedAt).toLocaleString('ja-JP') : '不明';
+        const lastUsed = data.lastUsedAt ? new Date(data.lastUsedAt).toLocaleString('ja-JP') : '未使用';
+        statusText.innerHTML = `発行済み（発行日時: ${escapeHtml(issuedAt)} / 最終利用: ${escapeHtml(lastUsed)}）`;
+        revokeBtn.style.display = '';
+      } else {
+        statusText.textContent = '未発行です。「新規トークンを発行」ボタンから発行してください。';
+        revokeBtn.style.display = 'none';
+      }
+    }
+
+    async function issueExtensionToken() {
+      if (document.getElementById('extTokenRevealGroup').style.display !== 'none') {
+        if (!confirm('既にトークンが発行されています。再発行すると、拡張機能に設定済みの古いトークンは使用できなくなります。続けますか？')) return;
+      }
+      showLoading(true);
+      try {
+        const res = await fetch('/WebGantt/api/teams_excel_import.php?action=issue_token', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({}),
+        });
+        const data = await res.json();
+        if (data.error) {
+          showMessage('extTokenMessage', data.error, 'error');
+        } else if (data.ok) {
+          document.getElementById('extTokenRevealInput').value = data.token;
+          document.getElementById('extTokenRevealGroup').style.display = '';
+          showMessage('extTokenMessage', '新しいトークンを発行しました。このトークンは今だけ表示されます。拡張機能のオプション画面に貼り付けてください', 'success');
+          await loadExtensionTokenStatus();
+        }
+      } catch (err) {
+        showMessage('extTokenMessage', '通信エラー: ' + err.message, 'error');
+      }
+      showLoading(false);
+    }
+
+    async function revokeExtensionToken() {
+      if (!confirm('拡張機能連携トークンを無効化しますか？\n無効化すると、拡張機能からのタスク取り込みができなくなります。')) return;
+      showLoading(true);
+      try {
+        const res = await fetch('/WebGantt/api/teams_excel_import.php?action=revoke_token', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({}),
+        });
+        const data = await res.json();
+        if (data.error) {
+          showMessage('extTokenMessage', data.error, 'error');
+        } else if (data.ok) {
+          document.getElementById('extTokenRevealGroup').style.display = 'none';
+          document.getElementById('extTokenRevealInput').value = '';
+          showMessage('extTokenMessage', 'トークンを無効化しました', 'success');
+          await loadExtensionTokenStatus();
+        }
+      } catch (err) {
+        showMessage('extTokenMessage', '通信エラー: ' + err.message, 'error');
       }
       showLoading(false);
     }
