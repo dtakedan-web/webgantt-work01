@@ -2,7 +2,7 @@
 
 - 作成日: 2026-08-18
 - 更新日: 2026-08-18（方式Q確定・新規要望3点反映・週またぎ結合仕様確定・ユーザー承認済み）
-- ステータス: **設計確定・承認済み。実装フェーズに着手**
+- ステータス: **サーバー側実装・拡張機能一式・単体テストまで完了。ユーザー実機での動作確認待ち**
 - 前提: `WebGantt開発コンテキスト.md` の全ルールに従う
   - `gantt-collab.html`（PC版）のコアUI/UXは変更しない
   - Web専用の新機能は最下バーまたは別ページに実装する
@@ -502,18 +502,21 @@ GET  /api/teams_excel_import.php?action=token_status   → 発行済みトーク
 2. ~~サンプルExcelの構造解析~~ → **完了**（5節）
 3. ~~4節の論点についてユーザー確認~~ → **完了（2026-08-18、本改訂の起点）**
 4. ~~本改訂版設計書の内容をユーザーに再確認いただく~~ → **完了（2026-08-18、週またぎ結合仕様を含め承認済み）**
-5. サーバー側実装
-   - 新規DDL作成（`docs/sql/2026-08-18_teams_excel_extension_tokens.sql`等）
-   - 新規API `api/teams_excel_import.php`（token発行/検証、list_projects、import_tasks）
-   - `account.html`への「拡張機能連携」セクション追加
-6. 拡張機能一式の実装（`manifest.json`、`popup.html/js`、`options.html/js`、SheetJS同梱）
-   - 予定選択チェックボックスUI（新規要望1）
-   - セル内改行分割ロジック（新規要望2）
-   - 同一名称タスク日またぎ結合ロジック（新規要望3、週またぎ（金曜→翌週月曜）も連続とみなす仕様で実装）
-7. サンドボックス内でのExcel解析ロジック単体テスト（改行分割・結合ロジック含む）
-8. ユーザー実機での拡張機能インストール・動作確認（13節の手順書に沿って実施）
-9. 本番サーバーへの反映（DBマイグレーション実行 + `git pull`）
-10. ドキュメント更新・コミット・push
+5. ~~サーバー側実装~~ → **完了(2026-08-18、コミット7833c00)**
+   - 新規DDL作成（`docs/sql/2026-08-18_teams_excel_extension_tokens.sql`）
+   - 新規API `api/teams_excel_import.php`（6エンドポイント: token_status/issue_token/revoke_token/token_verify/list_projects/import_tasks）
+   - `account.html`への「拡張機能連携」セクション追加（トークン発行・状態表示・無効化UI）
+6. ~~拡張機能一式の実装~~ → **完了(2026-08-18、コミットbd657d7)**
+   - `browser-extension/webgantt-teams-excel-importer/`（manifest.json、popup.html/js、options.html/js、common.js、SheetJS同梱、アイコン一式）
+   - 予定選択チェックボックスUI（新規要望1）実装済み
+   - セル内改行分割ロジック（新規要望2）`common.js` `splitCellIntoTasks()` に実装済み
+   - 同一名称タスク日またぎ結合ロジック（新規要望3、週またぎ（金曜→翌週月曜）も連続とみなす仕様）`common.js` `mergeConsecutiveSameNameTasks()`+`isNextBusinessDay()` に実装済み
+7. ~~サンドボックス内でのExcel解析ロジック単体テスト~~ → **完了(2026-08-18)**
+   - Node.js+xlsxパッケージでサンプルExcelを用いて`common.js`全関数を検証。週ブロック検出（実データ2週分）、改行分割、日またぎ結合（平日連続・非連続・週またぎの3パターン）、苗字部分一致マッチングを確認し、設計通りの結果を得た
+   - サンプルファイルのB〜F列（予定内容セル）自体はテンプレートのみで実データ未記入のため、実ファイルでの`extractTasksFromWorkbook()`結果は0件が正しい挙動。ロジック自体の妥当性は疑似データ注入テストで別途確認済み
+8. ユーザー実機での拡張機能インストール・動作確認（13節の手順書に沿って実施）→ **未着手（ユーザー側作業待ち）**
+9. 本番サーバーへの反映（DBマイグレーション実行 + `git pull`）→ **未着手（8完了後に案内）**
+10. ドキュメント更新・コミット・push → 本更新分を反映
 
 ---
 
