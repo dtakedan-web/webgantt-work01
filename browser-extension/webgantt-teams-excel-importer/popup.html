@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>WebGantt Teams Excel Importer</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', 'Hiragino Sans', sans-serif;
+      background: #f7f8fa;
+      color: #2f3441;
+      width: 380px;
+      max-height: 560px;
+      overflow-y: auto;
+      padding: 14px;
+      margin: 0;
+      box-sizing: border-box;
+    }
+    h1 { font-size: 14px; margin: 0 0 10px 0; }
+    .section { margin-bottom: 14px; }
+    .section-title { font-size: 12px; font-weight: 700; color: #5f6775; margin-bottom: 6px; }
+    label { display: block; font-size: 12px; margin-bottom: 4px; color: #2f3441; }
+    select, button {
+      font-size: 12px;
+    }
+    select {
+      width: 100%;
+      padding: 6px 8px;
+      border: 1px solid #dce2e8;
+      border-radius: 6px;
+      box-sizing: border-box;
+    }
+    button {
+      padding: 7px 14px;
+      border: none;
+      border-radius: 6px;
+      background: #3457d5;
+      color: #fff;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    button:hover { background: #2b61e0; }
+    button:disabled { background: #8a93a3; cursor: not-allowed; }
+    button.secondary {
+      background: #fafbfc;
+      color: #5f6775;
+      border: 1px solid #dce2e8;
+    }
+    button.secondary:hover { background: #e7ebf0; }
+    .week-list label {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 0;
+      font-size: 12px;
+    }
+    .btn-row { display: flex; gap: 8px; margin-top: 8px; }
+    .task-list {
+      max-height: 220px;
+      overflow-y: auto;
+      border: 1px solid #e7ebf0;
+      border-radius: 6px;
+      padding: 4px 8px;
+      background: #fff;
+    }
+    .task-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 6px;
+      padding: 5px 0;
+      border-bottom: 1px solid #f0f2f5;
+      font-size: 11px;
+    }
+    .task-item:last-child { border-bottom: none; }
+    .task-item .task-main { flex: 1; }
+    .task-item .task-name { font-weight: 600; }
+    .task-item .task-meta { color: #8a93a3; margin-top: 2px; }
+    .task-list-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 6px;
+    }
+    .task-list-header .links { font-size: 11px; }
+    .task-list-header .links a { color: #3457d5; cursor: pointer; text-decoration: underline; margin-left: 8px; }
+    .message {
+      font-size: 12px;
+      margin-top: 10px;
+      padding: 8px 10px;
+      border-radius: 4px;
+      display: none;
+      white-space: pre-wrap;
+    }
+    .message.success { display: block; background: #f0fdf4; color: #16a34a; }
+    .message.error { display: block; background: #fef2f2; color: #dc2626; }
+    .message.info { display: block; background: #eaf2ff; color: #3457d5; }
+    .no-token-notice {
+      font-size: 12px;
+      background: #fffbeb;
+      color: #92400e;
+      padding: 10px;
+      border-radius: 6px;
+      margin-bottom: 12px;
+    }
+    .no-token-notice a { color: #3457d5; }
+    .spinner-inline {
+      display: inline-block;
+      width: 12px; height: 12px;
+      border: 2px solid #dce2e8;
+      border-top-color: #3457d5;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      vertical-align: middle;
+      margin-right: 6px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    hr { border: none; border-top: 1px solid #e7ebf0; margin: 12px 0; }
+  </style>
+</head>
+<body>
+  <h1>WebGantt Teams Excel Importer</h1>
+
+  <div id="noTokenNotice" class="no-token-notice" style="display:none;">
+    トークンが未設定です。<a href="#" id="openOptionsLink">設定画面を開く</a>
+  </div>
+
+  <div id="mainUi" style="display:none;">
+    <div class="section">
+      <div class="section-title">① 送信先プロジェクト</div>
+      <select id="projectSelect"></select>
+    </div>
+
+    <div class="section">
+      <div class="section-title">② 取得する週（最大4週）</div>
+      <div id="weekList" class="week-list">
+        <div style="font-size:11px; color:#8a93a3;">「Excelを取得」を押すと週の一覧が表示されます</div>
+      </div>
+    </div>
+
+    <div class="btn-row">
+      <button id="fetchBtn" onclick="onFetchClick()">Excelを取得</button>
+    </div>
+
+    <hr>
+
+    <div class="section" id="taskSection" style="display:none;">
+      <div class="task-list-header">
+        <div class="section-title" style="margin:0;">③ 取り込む予定を選択</div>
+        <div class="links">
+          <a id="selectAllLink" onclick="setAllChecks(true)">全選択</a>
+          <a id="deselectAllLink" onclick="setAllChecks(false)">全解除</a>
+        </div>
+      </div>
+      <div id="taskList" class="task-list"></div>
+
+      <div class="btn-row">
+        <button id="importBtn" onclick="onImportClick()">インポート実行</button>
+      </div>
+    </div>
+
+    <div class="message" id="msg"></div>
+  </div>
+
+  <script src="lib/xlsx.full.min.js"></script>
+  <script src="common.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>

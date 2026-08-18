@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>WebGantt Teams Excel Importer - 設定</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', 'Hiragino Sans', sans-serif;
+      background: #f7f8fa;
+      color: #2f3441;
+      padding: 24px;
+      max-width: 520px;
+    }
+    h1 { font-size: 16px; margin-bottom: 8px; }
+    p.desc { font-size: 12px; color: #5f6775; margin-bottom: 20px; line-height: 1.6; }
+    .form-group { margin-bottom: 16px; }
+    label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px; }
+    input[type="text"], input[type="password"] {
+      width: 100%;
+      padding: 8px 10px;
+      border: 1px solid #dce2e8;
+      border-radius: 6px;
+      font-size: 13px;
+      box-sizing: border-box;
+    }
+    .hint { font-size: 11px; color: #8a93a3; margin-top: 4px; }
+    button {
+      padding: 8px 20px;
+      border: none;
+      border-radius: 6px;
+      background: #3457d5;
+      color: #fff;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    button:hover { background: #2b61e0; }
+    .message {
+      font-size: 12px;
+      margin-top: 12px;
+      padding: 8px 10px;
+      border-radius: 4px;
+      display: none;
+    }
+    .message.success { display: block; background: #f0fdf4; color: #16a34a; }
+    .message.error { display: block; background: #fef2f2; color: #dc2626; }
+  </style>
+</head>
+<body>
+  <h1>WebGantt Teams Excel Importer 設定</h1>
+  <p class="desc">
+    WebGanttのアカウント管理画面（account.html）で発行した「拡張機能連携トークン」を貼り付けてください。<br>
+    また、取り込み対象のTeams共有Excel（週間予定表）の共有リンクを設定してください。
+  </p>
+
+  <div class="form-group">
+    <label>WebGantt 拡張機能トークン</label>
+    <input type="password" id="tokenInput" placeholder="tex_で始まるトークン文字列">
+    <div class="hint">account.html の「拡張機能連携」カードで発行したトークンを貼り付けてください</div>
+  </div>
+
+  <div class="form-group">
+    <label>Teams共有Excel（週間予定表）の共有リンク</label>
+    <input type="text" id="shareUrlInput" placeholder="https://suzumond.sharepoint.com/:x:/s/...">
+    <div class="hint">SharePoint/OneDriveの「共有」から取得したリンクをそのまま貼り付けてください</div>
+  </div>
+
+  <button onclick="saveSettings()">保存</button>
+  <div class="message" id="msg"></div>
+
+  <script src="options.js"></script>
+</body>
+</html>
