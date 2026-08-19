@@ -33,6 +33,16 @@
  *   GET  /api/teams_excel_import.php?action=token_verify   → トークンの有効性確認（拡張機能の起動時チェック用）
  *   GET  /api/teams_excel_import.php?action=list_projects  → アクセス可能なプロジェクト一覧＋メンバー一覧を取得
  *   POST /api/teams_excel_import.php?action=import_tasks   → 選択済みタスク配列を受け取り、対象プロジェクトのsnapshotに追加
+ *
+ * 【2026-08-19追記】import_tasks実行後のgantt-ws通知（既存不具合対応）:
+ * import_tasksがDBのsnapshotを直接更新した後、api/notifications.phpの
+ * _pushNotificationToWs()と同一パターンで、gantt-ws（WebSocketサーバー、
+ * ポート3001、127.0.0.1限定）へ内部HTTP POSTを送信する。これにより、対象
+ * プロジェクトを開いているクライアントがいる場合、gantt-ws側がメモリ上に
+ * 保持している古いsnapshotが最新化され、「開いたまま放置→後でリロード時に
+ * 古い状態でDBが再上書きされ、インポートしたタスクが消える」事故を防止する
+ * （ユーザー実機で確認された不具合。gantt-ws/server.jsのroot README・
+ * コメントも参照）。
  */
 
 require_once __DIR__ . '/config.php';
@@ -161,6 +171,33 @@ function requireExtensionAuth(mysqli $db): array {
     'displayName' => $user['display_name'],
     'role'        => $user['role'],
   ];
+}
+
+/**
+ * gantt-ws（WebSocketサーバー、ポート3001、127.0.0.1限定）へ内部HTTP POSTを
+ * 送信し、対象プロジェクトをメモリ上にroomとして保持している（＝誰かが
+ * ブラウザで開いている）クライアント全員に、最新のsnapshotを強制配信する。
+ * api/notifications.php の _pushNotificationToWs() と同一パターン。
+ * gantt-ws側にroomが存在しない場合は何もされない（実害なし）。
+ * 通信に失敗しても本処理（import_tasksの成否）には影響させない
+ * （エラー抑制・タイムアウト短め）。
+ */
+function _pushGanttFullSyncToWs(string $projectId, array $snapshot, int $version): void {
+  $payload = json_encode(
+    ['projectId' => $projectId, 'snapshot' => $snapshot, 'version' => $version],
+    JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES
+  );
+  $ch = curl_init('http://127.0.0.1:3001/internal/full_sync_push');
+  curl_setopt_array($ch, [
+    CURLOPT_POST           => true,
+    CURLOPT_POSTFIELDS     => $payload,
+    CURLOPT_HTTPHEADER     => ['Content-Type: application/json'],
+    CURLOPT_RETURNTRANSFER => true,
+    CURLOPT_TIMEOUT        => 2,
+    CURLOPT_CONNECTTIMEOUT => 1,
+  ]);
+  @curl_exec($ch);
+  curl_close($ch);
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -417,8 +454,16 @@ if ($method === 'POST' && $action === 'import_tasks') {
     sendError('タスクの追加に失敗しました。しばらくしてから再度お試しください', 500);
   }
 
-  // 設計書10.3節: full_sync のリアルタイム反映は本フェーズでは実装しない
-  // （gantt-ws側の対応可否が本サンドボックスから確認できないため、将来検討事項として残す）
+  // 設計書10.3節の緩和策を実装（2026-08-19、ユーザー実機での不具合報告を受けて対応）:
+  // 拡張機能がDBのsnapshotを直接書き換えた直後、gantt-ws（WebSocketサーバー）へ
+  // 「このプロジェクトを開いているクライアントがいれば最新化して」と通知する。
+  // これを行わないと、ガントチャート画面を開いたままの状態から後でリロード/切断
+  // した際に、gantt-wsがメモリ上に保持していた「インポート前の古いsnapshot」で
+  // DBが再度上書きされ、インポートしたタスクが消えてしまう事故が発生する
+  // （ユーザー実機で確認済みの不具合）。
+  // gantt-ws側にroomが存在しない（誰も開いていない）場合は何もされない
+  // （DBは既に正しい状態のため実害はない）。失敗しても本処理の成否には影響させない。
+  _pushGanttFullSyncToWs($projectId, $snapshot, $newVersion);
 
   sendJson(['ok' => true, 'importedCount' => count($newTasks)]);
 }

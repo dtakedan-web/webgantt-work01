@@ -1,0 +1,38 @@
+# =====================================================================
+# ガントチャート WebSocket サーバー systemd (Phase 2-A)
+# =====================================================================
+
+[Unit]
+Description=ガントチャート WebSocket サーバー (Phase 2-A: 認証対応)
+After=network.target mysql.service
+
+[Service]
+Type=simple
+User=takeda
+Group=takeda
+WorkingDirectory=/opt/gantt-ws
+ExecStart=/usr/bin/node /opt/gantt-ws/server.js
+
+Environment=NODE_ENV=production
+Environment=PORT=3001
+Environment=CLIENT_ORIGIN=*
+
+# MySQL接続情報（デプロイ時に変更）
+Environment=DB_HOST=127.0.0.1
+Environment=DB_PORT=3306
+Environment=DB_NAME=gantt_collab
+Environment=DB_USER=gantt_app
+Environment=DB_PASS=gantt_pass
+
+Restart=always
+RestartSec=5
+StartLimitInterval=60
+StartLimitBurst=3
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=gantt-ws
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target
