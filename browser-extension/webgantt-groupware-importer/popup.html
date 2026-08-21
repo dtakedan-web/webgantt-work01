@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>WebGantt Groupware Importer</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', 'Hiragino Sans', sans-serif;
+      background: #f7f8fa;
+      color: #2f3441;
+      width: 520px;
+      max-height: 700px;
+      overflow-y: auto;
+      padding: 14px;
+      margin: 0;
+      box-sizing: border-box;
+    }
+    h1 { font-size: 14px; margin: 0 0 10px 0; }
+    .section { margin-bottom: 14px; }
+    .section-title { font-size: 12px; font-weight: 700; color: #5f6775; margin-bottom: 6px; }
+    label { display: block; font-size: 12px; margin-bottom: 4px; color: #2f3441; }
+    select, button {
+      font-size: 12px;
+    }
+    select {
+      width: 100%;
+      padding: 6px 8px;
+      border: 1px solid #dce2e8;
+      border-radius: 6px;
+      box-sizing: border-box;
+    }
+    button {
+      padding: 7px 14px;
+      border: none;
+      border-radius: 6px;
+      background: #3457d5;
+      color: #fff;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    button:hover { background: #2b61e0; }
+    button:disabled { background: #8a93a3; cursor: not-allowed; }
+    button.secondary {
+      background: #fafbfc;
+      color: #5f6775;
+      border: 1px solid #dce2e8;
+    }
+    button.secondary:hover { background: #e7ebf0; }
+    button.icon-btn {
+      padding: 6px 10px;
+    }
+    .week-nav {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+    .week-nav .base-week-label {
+      flex: 1;
+      text-align: center;
+      font-size: 12px;
+      font-weight: 600;
+      background: #fff;
+      border: 1px solid #e7ebf0;
+      border-radius: 6px;
+      padding: 6px 8px;
+    }
+    .week-count-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-size: 12px;
+    }
+    .week-count-row label {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      margin-bottom: 0;
+      font-weight: normal;
+      cursor: pointer;
+    }
+    .week-range-preview {
+      font-size: 11px;
+      color: #8a93a3;
+      margin-top: 6px;
+    }
+    .btn-row { display: flex; gap: 8px; margin-top: 8px; }
+    .type-tabs {
+      display: flex;
+      gap: 6px;
+      margin-bottom: 6px;
+    }
+    .type-tab {
+      padding: 4px 10px;
+      border-radius: 12px;
+      font-size: 11px;
+      cursor: pointer;
+      border: 1px solid #dce2e8;
+      background: #fff;
+      color: #5f6775;
+    }
+    .type-tab.active {
+      background: #3457d5;
+      color: #fff;
+      border-color: #3457d5;
+    }
+    .task-list {
+      max-height: 300px;
+      overflow-y: auto;
+      border: 1px solid #e7ebf0;
+      border-radius: 6px;
+      padding: 4px 8px;
+      background: #fff;
+    }
+    .task-count {
+      font-size: 11px;
+      color: #8a93a3;
+      margin-bottom: 6px;
+    }
+    .task-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 6px;
+      padding: 5px 0;
+      border-bottom: 1px solid #f0f2f5;
+      font-size: 11px;
+    }
+    .task-item:last-child { border-bottom: none; }
+    .task-item .task-main { flex: 1; }
+    .task-item .task-name { font-weight: 600; }
+    .task-item .task-meta { color: #8a93a3; margin-top: 2px; }
+    .task-item .task-type-badge {
+      display: inline-block;
+      font-size: 10px;
+      padding: 1px 6px;
+      border-radius: 8px;
+      margin-right: 6px;
+      color: #fff;
+    }
+    .task-type-badge.event { background: #16a34a; }
+    .task-type-badge.meeting { background: #d97706; }
+    .task-list-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 6px;
+    }
+    .task-list-header .links { font-size: 11px; }
+    .task-list-header .links a { color: #3457d5; cursor: pointer; text-decoration: underline; margin-left: 8px; }
+    .message {
+      font-size: 12px;
+      margin-top: 10px;
+      padding: 8px 10px;
+      border-radius: 4px;
+      display: none;
+      white-space: pre-wrap;
+    }
+    .message.success { display: block; background: #f0fdf4; color: #16a34a; }
+    .message.error { display: block; background: #fef2f2; color: #dc2626; }
+    .message.info { display: block; background: #eaf2ff; color: #3457d5; }
+    .no-token-notice {
+      font-size: 12px;
+      background: #fffbeb;
+      color: #92400e;
+      padding: 10px;
+      border-radius: 6px;
+      margin-bottom: 12px;
+    }
+    .no-token-notice a { color: #3457d5; }
+    hr { border: none; border-top: 1px solid #e7ebf0; margin: 12px 0; }
+  </style>
+</head>
+<body>
+  <h1>WebGantt Groupware Importer</h1>
+
+  <div id="noTokenNotice" class="no-token-notice" style="display:none;">
+    トークンが未設定です。<a href="#" id="openOptionsLink">設定画面を開く</a>
+  </div>
+
+  <div id="mainUi" style="display:none;">
+    <div class="section">
+      <div class="section-title">① 送信先プロジェクト</div>
+      <select id="projectSelect"></select>
+    </div>
+
+    <div class="section">
+      <div class="section-title">② 対象週（過去の週も選択できます）</div>
+      <div class="week-nav">
+        <button id="prevWeekBtn" class="secondary icon-btn">◀ 前の週</button>
+        <div class="base-week-label" id="baseWeekLabel">-</div>
+        <button id="nextWeekBtn" class="secondary icon-btn">次の週 ▶</button>
+      </div>
+      <div class="week-count-row">
+        取得する週数:
+        <label><input type="radio" name="weekCount" value="1" checked> 1週</label>
+        <label><input type="radio" name="weekCount" value="2"> 2週</label>
+        <label><input type="radio" name="weekCount" value="3"> 3週</label>
+        <label><input type="radio" name="weekCount" value="4"> 4週</label>
+      </div>
+      <div class="week-range-preview" id="weekRangePreview"></div>
+    </div>
+
+    <div class="btn-row">
+      <button id="fetchBtn">取得</button>
+    </div>
+
+    <hr>
+
+    <div class="section" id="taskSection" style="display:none;">
+      <div class="task-list-header">
+        <div class="section-title" style="margin:0;">③ 取り込む予定を選択</div>
+        <div class="links">
+          <a id="selectAllLink">全選択</a>
+          <a id="deselectAllLink">全解除</a>
+        </div>
+      </div>
+      <div class="type-tabs">
+        <div class="type-tab active" id="tabAll" data-type="all">すべて</div>
+        <div class="type-tab" id="tabEvent" data-type="event">終日予定</div>
+        <div class="type-tab" id="tabMeeting" data-type="meeting">会議</div>
+      </div>
+      <div id="taskCount" class="task-count"></div>
+      <div id="taskList" class="task-list"></div>
+
+      <div class="btn-row">
+        <button id="importBtn">インポート実行</button>
+      </div>
+    </div>
+
+    <div class="message" id="msg"></div>
+  </div>
+
+  <script src="common.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>

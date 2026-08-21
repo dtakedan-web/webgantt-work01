@@ -369,6 +369,32 @@
       <div class="message" id="extTokenMessage"></div>
     </div>
 
+    <!-- 社内グループウェア（intra-mart）連携 拡張機能トークン（新規タスク②） -->
+    <div class="card" id="groupwareScheduleExtensionSection">
+      <h2>グループウェア連携 <span class="badge">ベータ</span></h2>
+      <p style="font-size:13px; color:var(--text-sub); margin-bottom:16px;">
+        ブラウザ拡張機能（Edge/Chrome）から、社内グループウェア（intra-mart）の週間予定表をWebGanttへ取り込むための認証トークンです。
+        拡張機能のオプション画面に、ここで発行したトークンを貼り付けて利用します。
+      </p>
+
+      <div id="gwsTokenStatusView">
+        <div class="hint" id="gwsTokenStatusText">状態を確認しています...</div>
+      </div>
+
+      <!-- 発行直後のみ表示する生トークン表示欄 -->
+      <div class="form-group" id="gwsTokenRevealGroup" style="display:none;">
+        <label>発行されたトークン（この画面を離れると再表示できません）</label>
+        <input type="text" id="gwsTokenRevealInput" readonly>
+        <div class="hint">拡張機能の「オプション」画面に貼り付けてください。他人に共有しないでください。</div>
+      </div>
+
+      <div class="btn-row">
+        <button class="btn btn-primary" id="gwsTokenIssueBtn" onclick="issueGroupwareExtensionToken()">新規トークンを発行</button>
+        <button class="btn btn-danger" id="gwsTokenRevokeBtn" onclick="revokeGroupwareExtensionToken()" style="display:none;">トークンを無効化</button>
+      </div>
+      <div class="message" id="gwsTokenMessage"></div>
+    </div>
+
     <!-- ユーザー登録（管理者のみ） -->
     <div class="card admin-only" id="registerCard">
       <h2>ユーザー登録 <span class="badge">管理者のみ</span></h2>
@@ -506,6 +532,8 @@
         }
         // 新規タスク①: 拡張機能トークンの発行状態を取得
         await loadExtensionTokenStatus();
+        // 新規タスク②: グループウェア連携拡張機能トークンの発行状態を取得
+        await loadGroupwareExtensionTokenStatus();
       } catch (err) {
         showMessage('pwMessage', '初期化エラー: ' + err.message, 'error');
       }
@@ -682,6 +710,97 @@
         }
       } catch (err) {
         showMessage('extTokenMessage', '通信エラー: ' + err.message, 'error');
+      }
+      showLoading(false);
+    }
+
+    // ─── グループウェア（intra-mart）連携 拡張機能トークン(新規タスク②) ──────
+    // 参照: docs/groupware-schedule-import-design.md 10.1節・11.3節
+    // 本セクションは既存機能（アカウント設定・ユーザー管理・Teams Excel連携）
+    // とは独立した「特殊（汎用性は低い）」機能として
+    // api/groupware_schedule_import.php のみを呼び出す。将来この機能を撤去する
+    // 場合は、このブロックと上記HTMLカード(#groupwareScheduleExtensionSection)
+    // を削除するだけでよい。
+
+    async function loadGroupwareExtensionTokenStatus() {
+      const statusText = document.getElementById('gwsTokenStatusText');
+      try {
+        const res = await fetch('/WebGantt/api/groupware_schedule_import.php?action=token_status', {
+          credentials: 'include',
+        });
+        const data = await res.json();
+        if (data.error) {
+          statusText.textContent = '状態の取得に失敗しました: ' + data.error;
+          return;
+        }
+        renderGroupwareExtensionTokenStatus(data);
+      } catch (err) {
+        statusText.textContent = '状態の取得に失敗しました（通信エラー）: ' + err.message;
+      }
+    }
+
+    function renderGroupwareExtensionTokenStatus(data) {
+      const statusText = document.getElementById('gwsTokenStatusText');
+      const revokeBtn  = document.getElementById('gwsTokenRevokeBtn');
+      if (data.issued) {
+        const issuedAt = data.issuedAt ? new Date(data.issuedAt).toLocaleString('ja-JP') : '不明';
+        const lastUsed = data.lastUsedAt ? new Date(data.lastUsedAt).toLocaleString('ja-JP') : '未使用';
+        statusText.innerHTML = `発行済み（発行日時: ${escapeHtml(issuedAt)} / 最終利用: ${escapeHtml(lastUsed)}）`;
+        revokeBtn.style.display = '';
+      } else {
+        statusText.textContent = '未発行です。「新規トークンを発行」ボタンから発行してください。';
+        revokeBtn.style.display = 'none';
+      }
+    }
+
+    async function issueGroupwareExtensionToken() {
+      if (document.getElementById('gwsTokenRevealGroup').style.display !== 'none') {
+        if (!confirm('既にトークンが発行されています。再発行すると、拡張機能に設定済みの古いトークンは使用できなくなります。続けますか？')) return;
+      }
+      showLoading(true);
+      try {
+        const res = await fetch('/WebGantt/api/groupware_schedule_import.php?action=issue_token', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({}),
+        });
+        const data = await res.json();
+        if (data.error) {
+          showMessage('gwsTokenMessage', data.error, 'error');
+        } else if (data.ok) {
+          document.getElementById('gwsTokenRevealInput').value = data.token;
+          document.getElementById('gwsTokenRevealGroup').style.display = '';
+          showMessage('gwsTokenMessage', '新しいトークンを発行しました。このトークンは今だけ表示されます。拡張機能のオプション画面に貼り付けてください', 'success');
+          await loadGroupwareExtensionTokenStatus();
+        }
+      } catch (err) {
+        showMessage('gwsTokenMessage', '通信エラー: ' + err.message, 'error');
+      }
+      showLoading(false);
+    }
+
+    async function revokeGroupwareExtensionToken() {
+      if (!confirm('グループウェア連携トークンを無効化しますか？\n無効化すると、拡張機能からのタスク取り込みができなくなります。')) return;
+      showLoading(true);
+      try {
+        const res = await fetch('/WebGantt/api/groupware_schedule_import.php?action=revoke_token', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({}),
+        });
+        const data = await res.json();
+        if (data.error) {
+          showMessage('gwsTokenMessage', data.error, 'error');
+        } else if (data.ok) {
+          document.getElementById('gwsTokenRevealGroup').style.display = 'none';
+          document.getElementById('gwsTokenRevealInput').value = '';
+          showMessage('gwsTokenMessage', 'トークンを無効化しました', 'success');
+          await loadGroupwareExtensionTokenStatus();
+        }
+      } catch (err) {
+        showMessage('gwsTokenMessage', '通信エラー: ' + err.message, 'error');
       }
       showLoading(false);
     }
