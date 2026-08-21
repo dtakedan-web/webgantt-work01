@@ -39,13 +39,13 @@ Teams（SharePoint/OneDrive）で共有されている週間予定表Excel（`�
 |---|---|---|
 | 案X | 本番サーバー（`/media/HDD1_DATA/Web/WebGantt/`）から社内LAN経由でExcelにアクセス | **不採用**（サーバー設置環境の制約により社内LANへの経路が無い） |
 | 案Y | ユーザーが手動でExcelファイルをアップロード | **ユーザー却下**（「外部連携と趣旨が変わる」、都度手動DL＋アップロードの手間を避けたい） |
-| 案Z | Microsoft Graph API + Azure AD OAuth（`Files.Read`スコープ） | **断念確定**。`REDACTED-EMAIL`実機テストで「管理者の承認が必要」ブロック画面を確認。Task B（Googleカレンダー連携時のGraph API検討）・Task C（Outlookカレンダー連携時の`Calendars.Read`検討）と全く同じ`risk-based step-up consent`の壁（`docs/office-calendar-import-design.md` 2.1節参照） |
+| 案Z | Microsoft Graph API + Azure AD OAuth（`Files.Read`スコープ） | **断念確定**。ユーザーの会社アカウント実機テストで「管理者の承認が必要」ブロック画面を確認。Task B（Googleカレンダー連携時のGraph API検討）・Task C（Outlookカレンダー連携時の`Calendars.Read`検討）と全く同じ`risk-based step-up consent`の壁（`docs/office-calendar-import-design.md` 2.1節参照） |
 | 案（VBAマクロ拡張／ローカルエージェント／メール送信／Power Automate） | 第1ラウンドで提示した4案 | ユーザーが全て懸念を表明し不採用 |
 | **方式P（タブ連携方式）** | 拡張機能のContent Scriptで、開いているガントチャートタブに`gantt:op`イベントを発火させる方式 | **不採用確定（2026-08-18）**。ユーザーより「タブでプロジェクトを開いておく必要があり、使い勝手が悪い」との判断（4.2節参照） |
 
 ### 2.2 採用方式: SharePoint REST API（Cookie認証）+ ブラウザ拡張機能 + サーバー直接送信（方式Q）
 
-ユーザーから示された重要な制約「**ガントチャートを操作するPCと、会社アカウント(`REDACTED-EMAIL`)を使うPCが同一**」を前提に、以下を実機検証した：
+ユーザーから示された重要な制約「**ガントチャートを操作するPCと、会社アカウントを使うPCが同一**」を前提に、以下を実機検証した：
 
 1. ブラウザの開発者コンソールから `fetch(location.origin + "/sites/msteams_b3d137/_api/web/currentuser", {credentials:'include'})` → **`status: 200`**
 2. SharePointの`shares` API（`https://suzumond.sharepoint.com/_api/v2.0/shares/{base64エンコードされた共有URL}/driveItem`）を叩き、`@content.downloadUrl`（署名付きダウンロードURL）を取得 → **`status: 200`**
