@@ -5,7 +5,11 @@
  * 処理フロー:
  *  1. storageからトークン読込。未設定なら設定画面への導線を表示
  *  2. list_projects でプロジェクト一覧取得
- *  3. 「取得」ボタン:
+ *  3. ポップアップを開いたタイミングで、デフォルト状態（基準週=今週、週数=1週）の
+ *     まま自動的に取得処理を実行する（Teams Excel連携の「開いたら自動でExcelを
+ *     取得する」挙動と揃える、新規要望・2026-08-21）。
+ *     「取得」ボタンは、SSO再ログインが必要な場合や、基準週・週数を変更した
+ *     後の手動リトライ用として残す:
  *     a. gwlogin へfetch（Windows統合認証によるSSO自動ログイン、5.2節）
  *     b. 基準週（デフォルト今週）から、選択された週数分だけ find_group_week を
  *        displayDateを+7日ずつ変えて複数回呼び出す（7節）
@@ -81,6 +85,13 @@ async function init() {
 
   renderBaseWeekLabel();
   await loadProjects();
+
+  // ポップアップを開いたタイミングで、デフォルト状態（今週・1週分）のまま
+  // 自動的にスケジュール取得を行う（新規要望：Teams Excel連携と同じ挙動に統一）。
+  // 取得できるプロジェクトが1つもない場合は自動取得しても意味がないためスキップする。
+  if (state.projects.length > 0) {
+    await onFetchClick();
+  }
 }
 
 function chromeStorageGet(keys) {
