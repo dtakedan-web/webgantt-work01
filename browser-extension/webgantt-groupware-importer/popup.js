@@ -42,6 +42,11 @@ async function init() {
     e.preventDefault();
     chrome.runtime.openOptionsPage();
   });
+  // ヘッダー右上の常時表示「⚙」設定ボタン（トークン設定状態に関わらず常に表示。
+  // 初回設定を間違えた場合でも設定画面へ迷わず戻れるようにするための導線。2026-08-23追加）
+  document.getElementById('openOptionsBtn').addEventListener('click', function () {
+    chrome.runtime.openOptionsPage();
+  });
 
   document.getElementById('prevWeekBtn').addEventListener('click', function () {
     state.baseWeekOffset -= 1;

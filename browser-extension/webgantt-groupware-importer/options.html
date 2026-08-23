@@ -35,15 +35,18 @@
       cursor: pointer;
     }
     button:hover { background: #2b61e0; }
+    button:disabled { background: #8a93a3; cursor: not-allowed; }
     .message {
       font-size: 12px;
       margin-top: 12px;
       padding: 8px 10px;
       border-radius: 4px;
       display: none;
+      white-space: pre-wrap;
     }
     .message.success { display: block; background: #f0fdf4; color: #16a34a; }
     .message.error { display: block; background: #fef2f2; color: #dc2626; }
+    .message.info { display: block; background: #eaf2ff; color: #3457d5; }
   </style>
 </head>
 <body>
@@ -62,6 +65,7 @@
   <button id="saveBtn">保存</button>
   <div class="message" id="msg"></div>
 
+  <script src="common.js"></script>
   <script src="options.js"></script>
 </body>
 </html>

@@ -15,7 +15,24 @@
       margin: 0;
       box-sizing: border-box;
     }
-    h1 { font-size: 14px; margin: 0 0 10px 0; }
+    h1 { font-size: 14px; margin: 0; }
+    .popup-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 10px;
+    }
+    .gear-btn {
+      background: none;
+      border: none;
+      color: #5f6775;
+      font-size: 16px;
+      line-height: 1;
+      cursor: pointer;
+      padding: 4px 8px;
+      border-radius: 6px;
+    }
+    .gear-btn:hover { background: #e7ebf0; color: #3457d5; }
     .section { margin-bottom: 14px; }
     .section-title { font-size: 12px; font-weight: 700; color: #5f6775; margin-bottom: 6px; }
     label { display: block; font-size: 12px; margin-bottom: 4px; color: #2f3441; }
@@ -146,7 +163,10 @@
   </style>
 </head>
 <body>
-  <h1>WebGantt Teams Excel Importer</h1>
+  <div class="popup-header">
+    <h1>WebGantt Teams Excel Importer</h1>
+    <button id="openOptionsBtn" class="gear-btn" title="設定">⚙</button>
+  </div>
 
   <div id="noTokenNotice" class="no-token-notice" style="display:none;">
     トークンが未設定です。<a href="#" id="openOptionsLink">設定画面を開く</a>

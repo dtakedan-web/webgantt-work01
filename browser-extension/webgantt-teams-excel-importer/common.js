@@ -13,6 +13,13 @@
  *   - WGT.mergeConsecutiveSameNameTasks(items) : 9.3節 同一名称タスク日またぎ結合(週またぎ含む)
  *   - WGT.extractTasksFromWorkbook(workbook) : 上記を組み合わせた一連の抽出処理
  *   - WGT.matchAssigneeToMember(rawName, members) : 8.4節 苗字部分一致マッチング
+ *   - WGT.extractSiteBaseUrl(shareUrl)    : 共有リンクからSharePointサイト基点URLを推測（popup.js/options.js共用）
+ *   - WGT.encodeSharingUrl(sharingUrl)    : shares APIエンコード（popup.js/options.js共用）
+ *
+ * 【2026-08-23追記】options.js（初回設定画面）の保存時接続テストのため、
+ * popup.js内にのみ存在していた extractSiteBaseUrl/encodeSharingUrl を
+ * 本ファイルへ移設し、popup.js・options.js の両方から共用する形に変更した。
+ * （popup.html・options.html いずれも <script src="common.js"> で読み込む）
  */
 (function (global) {
   'use strict';
@@ -347,6 +354,38 @@
     const mergedTasks = WGT.mergeConsecutiveSameNameTasks(flatItems); // 9.3節（週またぎ含む）
 
     return { weeks: weekSummaries, tasks: mergedTasks };
+  };
+
+  // ─────────────────────────────────────────────────────────
+  // SharePoint共有リンク関連ユーティリティ（元popup.js、options.js保存時テストのため共通化）
+  // ─────────────────────────────────────────────────────────
+
+  /** 共有URLから、Cookie認証チェック(currentuser API)に使うサイト基点URLを推測する。
+   * 例: https://suzumond.sharepoint.com/:x:/s/msteams_b3d137/xxxxx
+   *  → https://suzumond.sharepoint.com/sites/msteams_b3d137 相当のURLパターンを推測
+   * パターンに一致しない場合はオリジンのみを返す(この場合 currentuser が404になる可能性あり、
+   * その際はエラーメッセージでユーザーに共有リンクの確認を促す)。
+   */
+  WGT.extractSiteBaseUrl = function (shareUrl) {
+    try {
+      const u = new URL(shareUrl);
+      const m = u.pathname.match(/\/(?:personal|sites|teams)\/([^/]+)/i);
+      if (m) {
+        const kind = u.pathname.toLowerCase().indexOf('/personal/') !== -1 ? 'personal'
+          : u.pathname.toLowerCase().indexOf('/teams/') !== -1 ? 'teams' : 'sites';
+        return u.origin + '/' + kind + '/' + m[1];
+      }
+      return u.origin;
+    } catch (e) {
+      return '';
+    }
+  };
+
+  /** Microsoft Graph/SharePoint sharesエンドポイント用の共有URLエンコード（"u!"プレフィックス方式） */
+  WGT.encodeSharingUrl = function (sharingUrl) {
+    const base64 = btoa(unescape(encodeURIComponent(sharingUrl)));
+    const urlSafe = base64.replace(/=/g, '').replace(/\//g, '_').replace(/\+/g, '-');
+    return 'u!' + urlSafe;
   };
 
   global.WGT = WGT;

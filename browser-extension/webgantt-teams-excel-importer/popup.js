@@ -36,6 +36,11 @@ async function init() {
     e.preventDefault();
     chrome.runtime.openOptionsPage();
   });
+  // ヘッダー右上の常時表示「⚙」設定ボタン（トークン設定状態に関わらず常に表示。
+  // 初回設定を間違えた場合でも設定画面へ迷わず戻れるようにするための導線。2026-08-23追加）
+  document.getElementById('openOptionsBtn').addEventListener('click', function () {
+    chrome.runtime.openOptionsPage();
+  });
 
   // Manifest V3のCSPによりHTML側のinline onclick属性は使用できないため、
   // ここでイベントリスナーを登録する（設計書8.3節）
@@ -146,7 +151,7 @@ async function onFetchClick() {
 
   try {
     // a. SharePoint 疎通確認
-    const siteBase = extractSiteBaseUrl(state.shareUrl);
+    const siteBase = WGT.extractSiteBaseUrl(state.shareUrl);
     const meRes = await fetch(siteBase + '/_api/web/currentuser', {
       headers: { Accept: 'application/json;odata=nometadata' },
       credentials: 'include',
@@ -157,7 +162,7 @@ async function onFetchClick() {
 
     // b. shares API で downloadUrl 取得
     const tenantOrigin = new URL(state.shareUrl).origin;
-    const encodedShareId = encodeSharingUrl(state.shareUrl);
+    const encodedShareId = WGT.encodeSharingUrl(state.shareUrl);
     const sharesRes = await fetch(tenantOrigin + '/_api/v2.0/shares/' + encodedShareId + '/driveItem', {
       headers: { Accept: 'application/json;odata=nometadata' },
       credentials: 'include',
@@ -262,35 +267,9 @@ async function onFetchClick() {
   }
 }
 
-/** 共有URLから、Cookie認証チェック(currentuser API)に使うサイト基点URLを推測する。
- * 例: https://suzumond.sharepoint.com/:x:/s/msteams_b3d137/xxxxx
- *  → https://suzumond.sharepoint.com/sites/msteams_b3d137 相当のURLパターンを推測
- * パターンに一致しない場合はオリジンのみを返す(この場合 currentuser が404になる可能性あり、
- * その際はエラーメッセージでユーザーに共有リンクの確認を促す)。
- */
-function extractSiteBaseUrl(shareUrl) {
-  try {
-    const u = new URL(shareUrl);
-    const m = u.pathname.match(/\/(?:personal|sites|teams)\/([^/]+)/i);
-    if (m) {
-      // OneDrive個人サイト(/personal/xxx)、チームサイト(/sites/xxx)、Teamsサイト(/teams/xxx)いずれも
-      // 直下のセグメントをそのままサイトパスとして採用する
-      const kind = u.pathname.toLowerCase().indexOf('/personal/') !== -1 ? 'personal'
-        : u.pathname.toLowerCase().indexOf('/teams/') !== -1 ? 'teams' : 'sites';
-      return u.origin + '/' + kind + '/' + m[1];
-    }
-    return u.origin;
-  } catch (e) {
-    return '';
-  }
-}
-
-/** Microsoft Graph/SharePoint sharesエンドポイント用の共有URLエンコード（"u!"プレフィックス方式） */
-function encodeSharingUrl(sharingUrl) {
-  const base64 = btoa(unescape(encodeURIComponent(sharingUrl)));
-  const urlSafe = base64.replace(/=/g, '').replace(/\//g, '_').replace(/\+/g, '-');
-  return 'u!' + urlSafe;
-}
+// extractSiteBaseUrl / encodeSharingUrl は common.js（WGT名前空間）に移設済み
+// （2026-08-23、options.js保存時接続テストとの共通化のため。WGT.extractSiteBaseUrl /
+//  WGT.encodeSharingUrl を参照）
 
 // ─────────────────────────────────────────────────────────
 // 週チェックボックスUI
