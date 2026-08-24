@@ -1,6 +1,6 @@
 /**
  * WebGantt Teams Excel Importer — ポップアップ本体処理
- * 参照: docs/teams-excel-import-design.md 7.2節・7.3節・8.3節
+ * 参照: docs/teams-excel-import-design.md 7.2節・7.3節・8.3節・18節（複数フォーマット対応）
  *
  * 処理フロー（設計書8.3節）:
  *  1. storageからトークン読込。未設定なら設定画面への導線を表示
@@ -11,9 +11,17 @@
  *     a. SharePoint currentuser API で疎通確認
  *     b. shares API で downloadUrl を取得
  *     c. downloadUrl から Excel実体(ArrayBuffer)を取得
- *     d. XLSX.read() でパース、common.js の WGT.* で週ブロック・予定を抽出
+ *     d. XLSX.read() でパース、設定済みフォーマット（WGT.getFormat(formatId)）の
+ *        listWeeks/extractTasks で週・予定を抽出（18節、フォーマット非依存化）
  *     e. 週チェックボックス・予定チェックボックスUIを表示（新規要望1）
  *  4. 「インポート実行」ボタン: チェック済み予定 + 選択中プロジェクトIDをサーバーへPOST
+ *
+ * 【2026-08-24追記】複数フォーマット対応。従来この中に直接埋め込まれていた
+ * 「週間予定表」専用の解析ロジック呼び出し（WGT.detectWeekBlocks等）を、
+ * 設定画面（options.html）で選択したフォーマットID（wgtFormatId、未設定時は
+ * WGT.DEFAULT_FORMAT_ID='weekly-table'にフォールバック）に対応する
+ * フォーマットオブジェクト（WGT.getFormat(id)）経由の呼び出しに変更した。
+ * ポップアップの画面構成・操作フロー自体は一切変更していない。
  */
 
 const SERVER_BASE = 'https://ogma.mydns.jp/WebGantt';
@@ -22,6 +30,8 @@ const API_ENDPOINT = SERVER_BASE + '/api/teams_excel_import.php';
 let state = {
   token: null,
   shareUrl: null,
+  formatId: null,      // 設定画面で選択済みのフォーマットID（未設定時はWGT.DEFAULT_FORMAT_IDにフォールバック）
+  format: null,         // WGT.getFormat(formatId) の結果をキャッシュ（{ id, label, listWeeks, extractTasks }）
   projects: [],       // [{ projectId, name, members: [displayName,...] }]
   workbook: null,      // XLSX.read() の結果（再利用のためキャッシュ）
   weeks: [],           // [{ index, startDate, endDate, checked }] ※日付昇順(古い→新しい)で保持
@@ -59,7 +69,7 @@ async function init() {
     renderTaskList();
   });
 
-  const stored = await chromeStorageGet(['wgtToken', 'wgtShareUrl']);
+  const stored = await chromeStorageGet(['wgtToken', 'wgtShareUrl', 'wgtFormatId']);
   if (!stored.wgtToken) {
     document.getElementById('noTokenNotice').style.display = 'block';
     document.getElementById('mainUi').style.display = 'none';
@@ -67,6 +77,15 @@ async function init() {
   }
   state.token = stored.wgtToken;
   state.shareUrl = stored.wgtShareUrl || '';
+  // フォーマット未設定（拡張機能アップデート直後で旧バージョンから引き継いだ場合など）は
+  // 従来唯一のフォーマットだった weekly-table にフォールバックし、既存ユーザーの動作を維持する
+  state.formatId = stored.wgtFormatId || WGT.DEFAULT_FORMAT_ID;
+  state.format = WGT.getFormat(state.formatId);
+  if (!state.format) {
+    showMsg('設定されているフォーマット（' + state.formatId + '）が見つかりません。設定画面で選び直してください', 'error');
+    document.getElementById('mainUi').style.display = 'none';
+    return;
+  }
 
   document.getElementById('noTokenNotice').style.display = 'none';
   document.getElementById('mainUi').style.display = 'block';
@@ -187,75 +206,34 @@ async function onFetchClick() {
     const workbook = XLSX.read(arrayBuffer, { type: 'array', cellDates: true });
     state.workbook = workbook;
 
-    // 週ブロックのみ先に検出してチェックボックスを表示
-    const pickedSheetName = WGT.pickDefaultSheet(workbook);
-    const sheet = workbook.Sheets[pickedSheetName];
-    const blocks = WGT.detectWeekBlocks(sheet);
-
-    // デバッグ用ログ（週ブロックが検出できない場合の原因調査用。
-    // ポップアップを右クリック→「検証」→Consoleタブで確認できる）
-    // ※ Consoleはオブジェクトを既定で折りたたみ表示するため、
-    //   「Save as...」で保存しても展開していない部分は文字列化されない。
-    //   そのため必ず JSON.stringify() 済みの文字列としてログに出す。
+    // 週一覧のみ先に検出してチェックボックスを表示（設定済みフォーマットのlistWeeksを使用。18節）
     console.log('[WGT debug] シート一覧:', JSON.stringify(workbook.SheetNames));
-    console.log('[WGT debug] 選択されたシート名:', pickedSheetName);
-    console.log('[WGT debug] シート範囲(!ref):', sheet && sheet['!ref']);
-    console.log('[WGT debug] 検出された週ブロック数:', blocks.length);
-    console.log('[WGT debug] 検出された週ブロック詳細(JSON):', JSON.stringify(blocks));
-    if (blocks.length === 0 && sheet && sheet['!ref']) {
-      const dbgRange = XLSX.utils.decode_range(sheet['!ref']);
-      const aColDump = [];
-      for (let r = dbgRange.s.r; r <= Math.min(dbgRange.e.r, dbgRange.s.r + 60); r++) {
-        const ref = XLSX.utils.encode_cell({ r, c: dbgRange.s.c });
-        const cell = sheet[ref];
-        aColDump.push({ row: r, value: cell ? cell.v : null, type: cell ? cell.t : null });
-      }
-      console.log('[WGT debug] A列(先頭列)の内容ダンプ(先頭60行・JSON):', JSON.stringify(aColDump));
-
-      // B4:F4（Excel上の行番号。0始まりでは row=3, col=1〜5）付近を含む
-      // 先頭10行×先頭10列を丸ごとダンプする（日付ヘッダー行が検出されない
-      // 原因調査用。セルの値だけでなく型(t)・書式(z)・数式(f)も出す）
-      const gridDump = [];
-      for (let r = dbgRange.s.r; r <= Math.min(dbgRange.e.r, dbgRange.s.r + 9); r++) {
-        const rowDump = [];
-        for (let c = dbgRange.s.c; c <= Math.min(dbgRange.e.c, dbgRange.s.c + 9); c++) {
-          const ref = XLSX.utils.encode_cell({ r, c });
-          const cell = sheet[ref];
-          rowDump.push({
-            ref: ref,
-            v: cell ? cell.v : null,
-            t: cell ? cell.t : null,   // 型: n=数値, s=文字列, d=日付, b=真偽値
-            z: cell ? cell.z : null,   // 表示書式
-            f: cell ? cell.f : null,   // 数式（あれば）
-          });
-        }
-        gridDump.push(rowDump);
-      }
-      console.log('[WGT debug] 先頭10行×先頭10列の詳細ダンプ(値/型/書式/数式・JSON):', JSON.stringify(gridDump));
-      // 1行ずつ改行して出す版（1行のJSON文字列が長すぎて折り返しが読みにくい場合の保険）
-      gridDump.forEach(function (rowDump, idx) {
-        console.log('[WGT debug] grid row ' + idx + ':', JSON.stringify(rowDump));
-      });
+    console.log('[WGT debug] 使用フォーマット:', state.formatId);
+    const weekSummaries = state.format.listWeeks(workbook);
+    console.log('[WGT debug] 検出された週数:', weekSummaries.length);
+    console.log('[WGT debug] 検出された週詳細(JSON):', JSON.stringify(weekSummaries));
+    if (weekSummaries.length === 0) {
+      console.log('[WGT debug] 週が検出できませんでした。設定画面で選択中のフォーマット（' + state.formatId + '）と、実際のExcelファイルのフォーマットが一致しているかご確認ください。');
     }
 
-    // state.weeks は common.js 側の並び順（日付昇順＝古い→新しい）のまま保持する。
-    // index は WGT.extractTasksFromWorkbook() の selectedWeekIndexes と対応させるため、
-    // blocks配列の並び順のまま採番する（表示順序はrenderWeekList側で逆順にする）。
+    // state.weeks は日付昇順（古い→新しい）のまま保持する。
+    // index は state.format.extractTasks() の selectedWeekIndexes と対応させるため、
+    // weekSummaries配列の並び順のまま採番する（表示順序はrenderWeekList側で逆順にする）。
     // デフォルトのチェック状態は「最新の1週間のみON」とする（新規要望）。
-    const lastIdx = blocks.length - 1;
-    state.weeks = blocks.map(function (b, idx) {
+    const lastIdx = weekSummaries.length - 1;
+    state.weeks = weekSummaries.map(function (w, idx) {
       return {
         index: idx,
-        startDate: b.dateColumns[0].date,
-        endDate: b.dateColumns[b.dateColumns.length - 1].date,
+        startDate: w.startDate,
+        endDate: w.endDate,
         checked: idx === lastIdx, // 最新週（配列末尾＝日付が最も新しい週）のみデフォルトON
       };
     });
 
     renderWeekList();
     recomputeTasks();
-    if (blocks.length === 0) {
-      showMsg('Excelは取得できましたが、週ブロックを検出できませんでした。詳細はポップアップを右クリック→「検証」→Consoleタブをご確認ください', 'error');
+    if (weekSummaries.length === 0) {
+      showMsg('Excelは取得できましたが、週を検出できませんでした。設定画面で選択中のフォーマットが正しいかご確認ください。詳細はポップアップを右クリック→「検証」→Consoleタブをご確認ください', 'error');
     } else {
       showMsg('Excelを取得しました。取り込む週・予定を選択してください', 'success');
     }
@@ -308,9 +286,9 @@ function renderWeekList() {
 // ─────────────────────────────────────────────────────────
 
 function recomputeTasks() {
-  if (!state.workbook) return;
+  if (!state.workbook || !state.format) return;
   const selectedIdx = state.weeks.filter(function (w) { return w.checked; }).map(function (w) { return w.index; });
-  const extracted = WGT.extractTasksFromWorkbook(state.workbook, { selectedWeekIndexes: selectedIdx });
+  const extracted = state.format.extractTasks(state.workbook, { selectedWeekIndexes: selectedIdx });
 
   const members = getCurrentMembers();
   state.tasks = extracted.tasks.map(function (t) {

@@ -1,25 +1,36 @@
 /**
  * WebGantt Teams Excel Importer — 共通処理モジュール
  * ===================================================
- * 参照: docs/teams-excel-import-design.md 5節・6節・9節
+ * 参照: docs/teams-excel-import-design.md 5節・6節・9節・18節（複数フォーマット対応）
  *
- * 本ファイルは popup.html から <script src="common.js"> で読み込まれる
- * 素朴な非モジュール形式のスクリプト（Manifest V3のpopup内で完結するため
- * import/export は使わず window直下に関数を生やす）。
+ * 本ファイルは popup.html / options.html から <script src="common.js"> で
+ * 読み込まれる素朴な非モジュール形式のスクリプト（Manifest V3のpopup内で
+ * 完結するため import/export は使わず window直下に関数を生やす）。
  *
- * 提供する関数:
- *   - WGT.detectWeekBlocks(workbook)      : 5.2節 週ブロック検出
- *   - WGT.splitCellIntoTasks(cellValue)   : 9.2節 セル内改行分割
- *   - WGT.mergeConsecutiveSameNameTasks(items) : 9.3節 同一名称タスク日またぎ結合(週またぎ含む)
- *   - WGT.extractTasksFromWorkbook(workbook) : 上記を組み合わせた一連の抽出処理
- *   - WGT.matchAssigneeToMember(rawName, members) : 8.4節 苗字部分一致マッチング
- *   - WGT.extractSiteBaseUrl(shareUrl)    : 共有リンクからSharePointサイト基点URLを推測（popup.js/options.js共用）
- *   - WGT.encodeSharingUrl(sharingUrl)    : shares APIエンコード（popup.js/options.js共用）
+ * 提供する関数（汎用ユーティリティのみ。フォーマット固有ロジックは
+ * formats/format-*.js 側に分離されている。18節参照）:
+ *   - WGT.splitCellIntoTasks(cellValue)          : 9.2節 セル内改行分割（フォーマット共通）
+ *   - WGT.mergeConsecutiveSameNameTasks(items)   : 9.3節 同一名称タスク日またぎ結合（フォーマット共通）
+ *   - WGT.matchAssigneeToMember(rawName, members): 8.4節 苗字部分一致マッチング（フォーマット共通）
+ *   - WGT.extractDateFromCell(cell)              : セルが日付らしき値か判定しISO文字列化（フォーマット共通）
+ *   - WGT.toIsoDate / WGT.formatDate / WGT.parseIsoDate / WGT.isNextBusinessDay : 日付ユーティリティ
+ *   - WGT.extractSiteBaseUrl(shareUrl)           : 共有リンクからSharePointサイト基点URLを推測（popup.js/options.js共用）
+ *   - WGT.encodeSharingUrl(sharingUrl)           : shares APIエンコード（popup.js/options.js共用）
+ *   - WGT.registerFormat(formatDef) / WGT.getFormat(id) / WGT.listFormats() / WGT.DEFAULT_FORMAT_ID
+ *       : 複数エクセルフォーマット対応のためのフォーマット登録レジストリ（18節）
  *
  * 【2026-08-23追記】options.js（初回設定画面）の保存時接続テストのため、
  * popup.js内にのみ存在していた extractSiteBaseUrl/encodeSharingUrl を
  * 本ファイルへ移設し、popup.js・options.js の両方から共用する形に変更した。
- * （popup.html・options.html いずれも <script src="common.js"> で読み込む）
+ *
+ * 【2026-08-24追記】複数のエクセル予定表フォーマットに対応するため、旧来
+ * このファイルに存在した「週間予定表（全体予定＋メンバー行）」専用の解析
+ * ロジック（pickDefaultSheet/detectWeekBlocks/extractTasksFromWorkbook）を
+ * formats/format-weekly-table.js へ移設した（ロジック自体は無変更の単純
+ * 分割）。代わりに、フォーマットを追加・切り替え可能にするための登録
+ * レジストリ（WGT.registerFormat 等）を新設した。各フォーマットは
+ * { id, label, listWeeks(workbook), extractTasks(workbook, options) } の
+ * インターフェースで自己登録する。
  */
 (function (global) {
   'use strict';
@@ -90,115 +101,21 @@
     return false;
   }
 
-  // ─────────────────────────────────────────────────────────
-  // シート選択ユーティリティ
-  // ─────────────────────────────────────────────────────────
-
-  /**
-   * ワークブック内から取り込み対象のシートを自動選択する。
-   * 優先順位: (1) シート名に「週間予定表」を含むシート
-   *           (2) データが入っている(!refを持つ)最初のシート
-   *           (3) それでも無ければ先頭シート
-   * サンプルファイルでは "Sheet1"(空) + "週間予定表" という構成のため、
-   * 単純に先頭シートを使うと空振りする。運用先のファイルでもシート構成が
-   * 変動する可能性を考慮し、名前一致を最優先にした上でデータ有無で
-   * フォールバックする。
-   */
-  WGT.pickDefaultSheet = function (workbook) {
-    const byName = workbook.SheetNames.find(function (n) { return n.indexOf('週間予定表') !== -1; });
-    if (byName) return byName;
-
-    const withData = workbook.SheetNames.find(function (n) {
-      const s = workbook.Sheets[n];
-      return s && s['!ref'];
-    });
-    if (withData) return withData;
-
-    return workbook.SheetNames[0];
-  };
+  WGT.toIsoDate = toIsoDate;
+  WGT.formatDate = formatDate;
+  WGT.parseIsoDate = parseIsoDate;
+  WGT.isNextBusinessDay = isNextBusinessDay;
 
   // ─────────────────────────────────────────────────────────
-  // 5.2節: 週ブロック検出ロジック
+  // セルの日付判定（フォーマット共通・各format-*.js の週ヘッダー検出から利用）
   // ─────────────────────────────────────────────────────────
 
   /**
-   * ワークシート(SheetJSのsheetオブジェクト、cellDates:trueで読み込み済み想定)から
-   * 週ブロックの配列を検出する。
-   * 返却形式: [{ headerRow, memberStartRow, memberEndRow, dateColumns: [{col, date}], allScheduleRow }]
-   *   - headerRow: 日付ヘッダー行のインデックス(0オリジン)
-   *   - allScheduleRow: 「全体予定」行のインデックス
-   *   - memberStartRow〜memberEndRow: メンバー行の範囲(inclusive)
-   *   - dateColumns: 日付が入っている列とその日付(ISO文字列)の配列
+   * SheetJSのセルオブジェクトが「日付らしき値」かどうかを判定し、ISO文字列を返す。
+   * 日付でなければ null を返す。
    */
-  WGT.detectWeekBlocks = function (sheet) {
-    const range = XLSX.utils.decode_range(sheet['!ref']);
-    const blocks = [];
-    const MAX_WEEKS = 4;
-
-    for (let r = range.s.r; r <= range.e.r && blocks.length < MAX_WEEKS; r++) {
-      // この行で「日付らしき値が2つ以上横に並んでいるか」を調べる
-      const dateColumns = [];
-      for (let c = range.s.c; c <= range.e.c; c++) {
-        const cellRef = XLSX.utils.encode_cell({ r, c });
-        const cell = sheet[cellRef];
-        if (!cell) continue;
-        const iso = extractDateFromCell(cell);
-        if (iso) dateColumns.push({ col: c, date: iso });
-      }
-      if (dateColumns.length < 2) continue; // 週ヘッダー行の候補ではない
-
-      // 直後の行を「全体予定」行として扱う（位置ベース判定・案A）。
-      // 当初は直後行のA列が「全体予定」固定文字列と完全一致することを
-      // 条件にしていたが、実際の運用ファイルでは「出図\r\n休暇\r\n全体」
-      // のような色分け凡例の文言が入っており完全一致しないケースが
-      // あることが判明した（ユーザー実機での動作確認で発覚）。
-      // ラベルの文言に関わらず、「日付ヘッダー行の直後の行」を無条件に
-      // 全体予定行とみなす方式に変更する。ただし空行の場合は週ブロックの
-      // 体をなしていない可能性が高いため、その場合のみログを出しつつ
-      // 処理は継続する（インポート対象からは自然に除外される＝
-      // 「全体予定」テキストが空ならタスクとして生成されないため実害はない）。
-      const allScheduleRow = r + 1;
-      const aCellRef = XLSX.utils.encode_cell({ r: allScheduleRow, c: range.s.c });
-      const aCell = sheet[aCellRef];
-      const aText = aCell ? String(aCell.v).trim() : '';
-      if (aText === '') {
-        console.warn('[WGT] 週ヘッダー候補行', r, 'の直後行(全体予定行扱い)のA列が空です。行:', allScheduleRow);
-      }
-
-      // 「全体予定」行の次から、次の空行 or 次の週ヘッダー行が現れるまでをメンバー行として収集
-      let memberStartRow = allScheduleRow + 1;
-      let memberEndRow = memberStartRow - 1;
-      for (let mr = memberStartRow; mr <= range.e.r; mr++) {
-        const nameCellRef = XLSX.utils.encode_cell({ r: mr, c: range.s.c });
-        const nameCell = sheet[nameCellRef];
-        const nameText = nameCell ? String(nameCell.v).trim() : '';
-        if (nameText === '') break; // 空行 = 週ブロックの区切り
-        memberEndRow = mr;
-      }
-
-      blocks.push({
-        headerRow: r,
-        allScheduleRow,
-        memberStartRow,
-        memberEndRow,
-        dateColumns,
-      });
-
-      // 次の週ブロック探索はこのブロックの終端より後から
-      r = memberEndRow;
-    }
-
-    // 週の並び順を時系列順(日付が若い順)に正規化する
-    blocks.sort(function (a, b) {
-      const da = a.dateColumns[0] ? a.dateColumns[0].date : '';
-      const db = b.dateColumns[0] ? b.dateColumns[0].date : '';
-      return da < db ? -1 : da > db ? 1 : 0;
-    });
-
-    return blocks;
-  };
-
-  function extractDateFromCell(cell) {
+  WGT.extractDateFromCell = function (cell) {
+    if (!cell) return null;
     if (cell.t === 'd' && cell.v instanceof Date) {
       return formatDate(cell.v);
     }
@@ -207,10 +124,10 @@
       return toIsoDate(cell.v);
     }
     return null;
-  }
+  };
 
   // ─────────────────────────────────────────────────────────
-  // 9.2節: セル内改行区切りテキストの複数タスク分割
+  // 9.2節: セル内改行区切りテキストの複数タスク分割（フォーマット共通）
   // ─────────────────────────────────────────────────────────
 
   WGT.splitCellIntoTasks = function (cellValue) {
@@ -222,7 +139,7 @@
   };
 
   // ─────────────────────────────────────────────────────────
-  // 9.3節: 同一名称タスクの日またぎ結合（週またぎ含む）
+  // 9.3節: 同一名称タスクの日またぎ結合（週またぎ含む・フォーマット共通）
   // ─────────────────────────────────────────────────────────
 
   /**
@@ -272,7 +189,7 @@
   };
 
   // ─────────────────────────────────────────────────────────
-  // 8.4節: 苗字部分一致マッチング
+  // 8.4節: 苗字部分一致マッチング（フォーマット共通）
   // ─────────────────────────────────────────────────────────
 
   /**
@@ -294,66 +211,6 @@
       if (name.indexOf(displayName) !== -1) return displayName; // Excel側の文字列にメンバー名が含まれる
     }
     return name; // マッチしない場合は生文字列のまま
-  };
-
-  // ─────────────────────────────────────────────────────────
-  // ワークブック全体からのタスク抽出（週ブロック検出 → セル抽出 → 改行分割 → 日またぎ結合）
-  // ─────────────────────────────────────────────────────────
-
-  /**
-   * workbook: XLSX.read() の戻り値
-   * options: { sheetName?: string, selectedWeekIndexes?: number[] }
-   * 戻り値: { weeks: [{ startDate, endDate }], tasks: [{ assignee, taskName, startDate, endDate }] }
-   */
-  WGT.extractTasksFromWorkbook = function (workbook, options) {
-    options = options || {};
-    const sheetName = options.sheetName || WGT.pickDefaultSheet(workbook);
-    const sheet = workbook.Sheets[sheetName];
-    if (!sheet) throw new Error('シートが見つかりません: ' + sheetName);
-
-    const blocks = WGT.detectWeekBlocks(sheet);
-    const selectedIdx = options.selectedWeekIndexes; // undefinedなら全週
-
-    const flatItems = []; // { assignee, taskName, date }
-    const weekSummaries = [];
-
-    blocks.forEach(function (block, idx) {
-      const weekStart = block.dateColumns[0].date;
-      const weekEnd = block.dateColumns[block.dateColumns.length - 1].date;
-      weekSummaries.push({ index: idx, startDate: weekStart, endDate: weekEnd });
-
-      if (Array.isArray(selectedIdx) && selectedIdx.indexOf(idx) === -1) return; // この週は未選択
-
-      // 「全体予定」行 + メンバー行を1本の配列として処理
-      const rowsToProcess = [block.allScheduleRow];
-      for (let r = block.memberStartRow; r <= block.memberEndRow; r++) rowsToProcess.push(r);
-
-      rowsToProcess.forEach(function (r) {
-        const isAllSchedule = (r === block.allScheduleRow);
-        const nameCellRef = XLSX.utils.encode_cell({ r: r, c: block.dateColumns[0].col - 1 >= 0 ? 0 : 0 });
-        // A列(先頭列)に氏名がある前提。dateColumnsの最小colより前の列(=先頭列)から取得する。
-        const firstCol = Math.min.apply(null, block.dateColumns.map(function (d) { return d.col; })) - 1;
-        const nameCol = firstCol >= 0 ? firstCol : 0;
-        const nameRef = XLSX.utils.encode_cell({ r: r, c: nameCol });
-        const nameCell = sheet[nameRef];
-        const rawAssignee = isAllSchedule ? '' : (nameCell ? String(nameCell.v).trim() : '');
-
-        block.dateColumns.forEach(function (dc) {
-          const cellRef = XLSX.utils.encode_cell({ r: r, c: dc.col });
-          const cell = sheet[cellRef];
-          if (!cell || cell.v == null || String(cell.v).trim() === '') return; // 空セルは対象外(機能仕様3)
-
-          const taskNames = WGT.splitCellIntoTasks(cell.v); // 9.2節
-          taskNames.forEach(function (taskName) {
-            flatItems.push({ assignee: rawAssignee, taskName: taskName, date: dc.date });
-          });
-        });
-      });
-    });
-
-    const mergedTasks = WGT.mergeConsecutiveSameNameTasks(flatItems); // 9.3節（週またぎ含む）
-
-    return { weeks: weekSummaries, tasks: mergedTasks };
   };
 
   // ─────────────────────────────────────────────────────────
@@ -387,6 +244,47 @@
     const urlSafe = base64.replace(/=/g, '').replace(/\//g, '_').replace(/\+/g, '-');
     return 'u!' + urlSafe;
   };
+
+  // ─────────────────────────────────────────────────────────
+  // 18節: 複数エクセルフォーマット対応のためのフォーマット登録レジストリ
+  // ─────────────────────────────────────────────────────────
+  //
+  // 各 formats/format-*.js は、自分自身の読み込み時に以下の形で自己登録する:
+  //   WGT.registerFormat({
+  //     id: 'weekly-table',           // 内部ID（chrome.storage.localの保存値・変更しないこと）
+  //     label: '標準週間予定表（全体予定＋メンバー行）', // 設定画面ドロップダウンの表示名
+  //     listWeeks: function (workbook) { ... },          // 週一覧を検出（軽量・週チェックボックス表示用）
+  //                                                       // 戻り値: [{ startDate, endDate }, ...]（昇順）
+  //     extractTasks: function (workbook, options) { ... } // options.selectedWeekIndexes（配列 or undefined=全週）
+  //                                                       // 戻り値: { tasks: [{ assignee, taskName, startDate, endDate }] }
+  //   });
+  //
+  // 新しいフォーマットを追加する場合は formats/format-新規名.js を1ファイル追加し、
+  // popup.html・options.html に <script> タグを1行追加するだけでよい
+  // （既存フォーマットのファイルには一切手を入れない）。
+
+  const formatRegistry = new Map();
+
+  WGT.registerFormat = function (formatDef) {
+    if (!formatDef || !formatDef.id) {
+      throw new Error('WGT.registerFormat: id は必須です');
+    }
+    formatRegistry.set(formatDef.id, formatDef);
+  };
+
+  WGT.getFormat = function (id) {
+    return formatRegistry.get(id) || null;
+  };
+
+  /** 登録済みフォーマット一覧を配列で返す（設定画面ドロップダウン表示用） */
+  WGT.listFormats = function () {
+    return Array.from(formatRegistry.values());
+  };
+
+  /** 拡張機能インストール直後・旧バージョンからの更新直後など、
+   *  formatId が未保存の場合に使うデフォルト値（既存ユーザーの動作を維持するため
+   *  従来唯一のフォーマットだった 'weekly-table' を指す） */
+  WGT.DEFAULT_FORMAT_ID = 'weekly-table';
 
   global.WGT = WGT;
 })(typeof window !== 'undefined' ? window : globalThis);

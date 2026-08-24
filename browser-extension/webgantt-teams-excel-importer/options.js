@@ -1,6 +1,6 @@
 /**
  * WebGantt Teams Excel Importer — オプション画面（初回設定）
- * 参照: docs/teams-excel-import-design.md 7.1節・8.1節
+ * 参照: docs/teams-excel-import-design.md 7.1節・8.1節・18節（複数フォーマット対応）
  *
  * 【2026-08-23追記】保存時接続テストを追加。
  * 「初回設定時にトークンや共有リンクを間違えて保存してしまい、ポップアップで
@@ -10,18 +10,39 @@
  *   1. token_verify API でトークンの有効性を確認
  *   2. 共有リンクから推測したSharePointサイトへ currentuser API で疎通確認
  *   3. shares API で実際にファイル情報（downloadUrl）が取得できるか確認
+ *
+ * 【2026-08-24追記】複数フォーマット対応。「読み込むエクセル予定表フォーマット」
+ * ドロップダウンを追加した。選択肢は WGT.listFormats()（common.js + formats/*.js
+ * が自己登録した一覧）から動的生成する。フォーマット選択自体は接続確認の対象外
+ * （フォーマットの正誤はExcel取得後でないと判断できないため、token_verify等の
+ * 3段階接続テストとは独立して保存する）。1ユーザーにつきフォーマットは基本1つ
+ * 固定という運用のため、初回設定画面でのみ選択する形とした。
  */
 
 const SERVER_BASE = 'https://ogma.mydns.jp/WebGantt';
 const API_ENDPOINT = SERVER_BASE + '/api/teams_excel_import.php';
 
 document.addEventListener('DOMContentLoaded', function () {
-  chrome.storage.local.get(['wgtToken', 'wgtShareUrl'], function (data) {
+  populateFormatSelect();
+  chrome.storage.local.get(['wgtToken', 'wgtShareUrl', 'wgtFormatId'], function (data) {
     if (data.wgtToken) document.getElementById('tokenInput').value = data.wgtToken;
     if (data.wgtShareUrl) document.getElementById('shareUrlInput').value = data.wgtShareUrl;
+    document.getElementById('formatSelect').value = data.wgtFormatId || WGT.DEFAULT_FORMAT_ID;
   });
   document.getElementById('saveBtn').addEventListener('click', saveSettings);
 });
+
+/** 登録済みフォーマット一覧（WGT.listFormats()）からドロップダウンの選択肢を生成する */
+function populateFormatSelect() {
+  const select = document.getElementById('formatSelect');
+  select.innerHTML = '';
+  WGT.listFormats().forEach(function (fmt) {
+    const opt = document.createElement('option');
+    opt.value = fmt.id;
+    opt.textContent = fmt.label;
+    select.appendChild(opt);
+  });
+}
 
 function showMsg(text, type) {
   const el = document.getElementById('msg');
@@ -37,7 +58,12 @@ function setBusy(busy) {
 async function saveSettings() {
   const token = document.getElementById('tokenInput').value.trim();
   const shareUrl = document.getElementById('shareUrlInput').value.trim();
+  const formatId = document.getElementById('formatSelect').value;
 
+  if (!formatId || !WGT.getFormat(formatId)) {
+    showMsg('読み込むフォーマットを選択してください', 'error');
+    return;
+  }
   if (!token || !token.startsWith('tex_')) {
     showMsg('トークンの形式が正しくないようです（"tex_"で始まる文字列を貼り付けてください）', 'error');
     return;
@@ -115,7 +141,7 @@ async function saveSettings() {
 
     // すべて成功した場合のみ保存する
     await new Promise(function (resolve) {
-      chrome.storage.local.set({ wgtToken: token, wgtShareUrl: shareUrl }, resolve);
+      chrome.storage.local.set({ wgtToken: token, wgtShareUrl: shareUrl, wgtFormatId: formatId }, resolve);
     });
     showMsg('接続確認に成功し、設定を保存しました。ポップアップを開いて動作確認してください', 'success');
   } catch (err) {

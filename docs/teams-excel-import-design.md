@@ -530,3 +530,107 @@ GET  /api/teams_excel_import.php?action=token_status   → 発行済みトーク
 6. サンプルExcel（`予定表(サンプル).xlsm`、シート「週間予定表」）の構造をopenpyxlで解析し、5節の週ブロック検出ロジックの妥当性を確認（行4/20が日付ヘッダー、行5/21が「全体予定」固定文字列、以降がメンバー行という構造を実データで確認）
 
 以上により、技術的な実現可能性は証明済み。**本改訂版（4節の確定事項・新規要望3点・コード分離方針）についてご確認いただき次第、実装フェーズに進む。**
+
+---
+
+## 17. （欠番）
+
+本設計書は16節までで方式Q確定版として一度完結しているため、17節は使用しない。以降の複数フォーマット対応（本追記分）は18節として追加する。
+
+---
+
+## 18. 複数エクセルフォーマット対応（2026-08-24 追記・実装完了）
+
+### 18.1 背景
+
+`webgantt-teams-excel-importer`拡張機能は、これまで「標準週間予定表（全体予定＋メンバー行）」という単一フォーマットのExcelファイルのみを解析対象としていた。しかし、所属部署によって運用しているExcel予定表のフォーマットが異なることが判明し、以下の要望が出された。
+
+> 従来のエクセル予定のフォーマットは、そのまま運用しつつ、別の新しいエクセル予定フォーマットを読み込める（選択して読み込む）機能を追加したい。今後、別の予定エクセルフォーマットも増える可能性がある。
+
+### 18.2 確定事項（ユーザー回答）
+
+1. 新フォーマットは既存フォーマットとは別ファイル・別の共有リンクで運用される（同一シート内に混在しない）
+2. 1人のユーザーが使うフォーマットは基本的に1つに固定（頻繁な切り替えは想定しない）
+3. 拡張性を考慮し、今後3つ目・4つ目のフォーマットが増えても対応しやすい構造にする（フォーマット・プラグイン方式を採用）
+4. 既存フォーマットのロジックは無変更（ファイル分割のみ）とし、新フォーマット追加による既存動作への影響をゼロにする
+
+### 18.3 新フォーマット「部署別週間予定表」の構造（サンプルExcel解析結果）
+
+ユーザー提供のサンプルファイル（`別フォーマット週間予定表(サンプル).xlsx`）をopenpyxlで詳細解析し、以下の構造を確認した。
+
+- シートが「週」に対応する（1シート = 1週間）。シート名は日付形式（例: `26.8.17`、`26.8.3`）。ワークブック内の全シートを「週」として扱う
+- 行3がヘッダー行（B3=担当、C3=機種/業務、D/F/H/J/L3=日付の結合セル、N3=備考）、行4が曜日ラベル、行5以降がデータ行
+- A列（部署名）・B列（担当者名）は複数行にわたりセル結合されている（forward-fill方式で値を引き継ぐ必要がある）。C列（機種/業務）は結合されていない
+- 「全体予定（ユーザー同士の共通予定）」という概念は存在しない（既存フォーマットにはあった仕組みだが、新フォーマットには無い）
+- N列（備考）はデータとして取り込まない
+- C列（機種/業務）が空だが予定内容がある行が一部存在する（例:「PJ」「面談」「研修」等の単発予定）。この場合はタスク名のプレフィックスを付けず、セル内容のみをタスク名とする実装判断とした
+
+### 18.4 ユーザー確認済みの仕様（6論点）
+
+| # | 論点 | 確定内容 |
+|---|---|---|
+| ① | タスク名の生成方法 | 「機種/業務: セル内容」の形式（C列が空の場合はセル内容のみ） |
+| ② | 部署名（A列） | 無視（タスクへは反映しない） |
+| ③ | 備考列（N列） | 無視（未対応） |
+| ④ | 日またぎ結合ロジック | 既存フォーマット（9.3節`mergeConsecutiveSameNameTasks`）を踏襲。週またぎ（金曜→翌週月曜）も連続とみなす |
+| ⑤ | 週選択UI | シート数が増えてもチェックボックスで全件表示 |
+| ⑥ | 対象シート判定 | ブック内の全シートを基本的に「週」として扱う |
+
+フォーマットの名称・ID: 既存フォーマットを`weekly-table`（標準週間予定表：全体予定＋メンバー行）、新フォーマットを`dept-schedule`（部署別週間予定表：機種/業務別・シート週別）とする。
+
+### 18.5 アーキテクチャ: フォーマット・プラグイン方式
+
+3つ目以降のフォーマット追加を見据え、以下の登録レジストリ方式を採用した。
+
+```javascript
+// common.js
+const formatRegistry = new Map();
+WGT.registerFormat = function (formatDef) {
+  // formatDef = { id, label, listWeeks(workbook), extractTasks(workbook, options) }
+  formatRegistry.set(formatDef.id, formatDef);
+};
+WGT.getFormat = function (id) { return formatRegistry.get(id) || null; };
+WGT.listFormats = function () { return Array.from(formatRegistry.values()); };
+WGT.DEFAULT_FORMAT_ID = 'weekly-table';
+```
+
+各フォーマットは `formats/format-<id>.js` という単独ファイルとして実装し、読み込まれた時点で`WGT.registerFormat()`を呼んで自己登録する。`popup.js`・`options.js`はフォーマットの内部実装を知らず、`WGT.getFormat(id)`で取得したオブジェクトの`listWeeks()`/`extractTasks()`のみを呼び出す（フォーマット非依存化）。
+
+将来3つ目のフォーマットを追加する場合は、`formats/format-<新id>.js`を新規作成して同インターフェースで自己登録し、`popup.html`・`options.html`に`<script>`タグを1行追加するだけで対応できる（既存コードの変更は不要）。
+
+### 18.6 ファイル構成（実装結果）
+
+| ファイル | 役割 |
+|---|---|
+| `common.js` | フォーマット非依存の汎用ユーティリティ（日付処理・セル内改行分割・日またぎ結合・苗字マッチング・SharePoint URL処理）＋フォーマット登録レジストリのみ。旧来存在した`weekly-table`専用ロジックはここから削除・移設した |
+| `formats/format-weekly-table.js` | 既存フォーマット`weekly-table`の解析ロジック（`pickDefaultSheet`/`detectWeekBlocks`/`extractTasksFromWorkbook`）を`common.js`から単純分割・移設（ロジック自体は無変更）。ファイル末尾で`WGT.registerFormat({id:'weekly-table', ...})`により自己登録 |
+| `formats/format-dept-schedule.js` | 新規フォーマット`dept-schedule`の解析ロジック（`findHeaderRow`/`analyzeSheet`/`analyzeAllSheets`/`extractItemsFromSheetInfo`）。B列（担当者）のforward-fill処理、C列（機種/業務）+セル内容によるタスク名生成を実装。ファイル末尾で`WGT.registerFormat({id:'dept-schedule', ...})`により自己登録 |
+| `popup.html` / `options.html` | `<script>`タグを`common.js`の後・`popup.js`/`options.js`の前に、`formats/format-weekly-table.js`→`formats/format-dept-schedule.js`の順で追加 |
+| `popup.js` | `state.formatId`/`state.format`を追加。`init()`で`chrome.storage.local`から`wgtFormatId`を読み込み`WGT.getFormat()`で解決（未設定時は`WGT.DEFAULT_FORMAT_ID`にフォールバック）。`onFetchClick()`は`state.format.listWeeks(workbook)`、`recomputeTasks()`は`state.format.extractTasks(workbook, {selectedWeekIndexes})`を呼ぶ形にフォーマット非依存化した |
+| `options.js` | 設定画面にフォーマット選択ドロップダウン（`<select id="formatSelect">`）を追加。`populateFormatSelect()`で`WGT.listFormats()`の内容を選択肢として動的生成し、保存時に`wgtFormatId`として`chrome.storage.local`に保存する |
+| `manifest.json` | バージョンを`1.0.0`→`1.1.0`に更新 |
+
+### 18.7 設定方法（ユーザー向け）
+
+拡張機能の設定画面（アイコン右クリック→オプション、または`chrome.runtime.openOptionsPage()`経由）に「読み込むエクセル予定表フォーマット」という選択欄が追加された。所属部署で使用しているフォーマットに応じて「標準週間予定表（全体予定＋メンバー行）」または「部署別週間予定表（機種/業務別・シート週別）」を選択し、保存する。以降、ポップアップでの取得・インポート処理は選択済みフォーマットのロジックで自動的に行われる。
+
+### 18.8 単体テスト結果（サンドボックス内、Node.js環境）
+
+SheetJS（`lib/xlsx.full.min.js`）を`eval()`+`global.window = global`でNode.js上に読み込み、`common.js`・`formats/*.js`を実データで検証した。
+
+- 新フォーマットサンプル（`別フォーマット週間予定表(サンプル).xlsx`）に`dept-schedule.listWeeks()`を適用 → 2週（`2026-08-03`〜`2026-08-07`、`2026-08-17`〜`2026-08-21`）を正しく検出
+- 同サンプルに`dept-schedule.extractTasks()`を適用 → 72件のタスクを抽出。`selectedWeekIndexes`で1週に絞り込むと36件に正しく減少することを確認
+- 既存サンプル（`予定表(サンプル).xlsm`）に`weekly-table.listWeeks()`/`extractTasks()`を適用 → 変更前と同じ挙動（2週検出、実データ未記入のため0件抽出）であることを確認し、既存フォーマットへの影響がないことを確認
+- 交差検証として新フォーマットサンプルに`weekly-table`を適用した場合、列構成が部分的に一致するため1週・6件が誤検出されることを確認したが、「1ユーザー1フォーマット固定」という運用前提（18.2節）の範囲内では実害がないと判断した
+- `common.js`・`popup.js`・`options.js`・`formats/format-weekly-table.js`・`formats/format-dept-schedule.js`の全JSファイルに対して`node --check`を実行し、構文エラーがないことを確認
+
+### 18.9 今後の拡張性
+
+3つ目以降のフォーマットを追加する際の手順（想定）:
+
+1. サンプルExcelを解析し、フォーマット固有の列構成・シート構成を把握する
+2. `formats/format-<新id>.js`を新規作成し、`{ id, label, listWeeks(workbook), extractTasks(workbook, options) }`のインターフェースで実装、ファイル末尾で`WGT.registerFormat()`により自己登録する
+3. `popup.html`・`options.html`に`<script src="formats/format-<新id>.js">`を1行追加する（既存の`<script>`タグの並び・他ファイルは変更不要）
+4. サンドボックス内でNode.js単体テストを実施し、既存フォーマットへの影響がないことを確認する
+
+`common.js`・`popup.js`・`options.js`本体への変更は基本的に不要であり、フォーマット追加のたびにコアロジックへ手を入れるリスクを避けられる構造になっている。
