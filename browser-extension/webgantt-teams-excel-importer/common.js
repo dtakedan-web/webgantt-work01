@@ -252,7 +252,7 @@
   // 各 formats/format-*.js は、自分自身の読み込み時に以下の形で自己登録する:
   //   WGT.registerFormat({
   //     id: 'weekly-table',           // 内部ID（chrome.storage.localの保存値・変更しないこと）
-  //     label: '標準週間予定表（全体予定＋メンバー行）', // 設定画面ドロップダウンの表示名
+  //     label: '予定表フォーマットA：週間予定表（全体予定＋メンバー行）', // 設定画面ドロップダウンの表示名
   //     listWeeks: function (workbook) { ... },          // 週一覧を検出（軽量・週チェックボックス表示用）
   //                                                       // 戻り値: [{ startDate, endDate }, ...]（昇順）
   //     extractTasks: function (workbook, options) { ... } // options.selectedWeekIndexes（配列 or undefined=全週）

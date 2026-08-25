@@ -1,5 +1,5 @@
 /**
- * WebGantt Teams Excel Importer — フォーマット「標準週間予定表（全体予定＋メンバー行）」
+ * WebGantt Teams Excel Importer — フォーマット「予定表フォーマットA：週間予定表（全体予定＋メンバー行）」
  * ===================================================================================
  * 内部ID: weekly-table
  * 参照: docs/teams-excel-import-design.md 5節・6節・9節
@@ -216,7 +216,7 @@
 
   WGT.registerFormat({
     id: 'weekly-table',
-    label: '標準週間予定表（全体予定＋メンバー行）',
+    label: '予定表フォーマットA：週間予定表（全体予定＋メンバー行）',
     listWeeks: listWeeks,
     extractTasks: extractTasks,
   });
