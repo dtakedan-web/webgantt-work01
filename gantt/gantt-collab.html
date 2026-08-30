@@ -2923,7 +2923,7 @@ body.is-pane-resizing * {
 .system-settings-display-header,
 .system-settings-display-row {
   display: grid;
-  grid-template-columns: 18px 74px 74px minmax(0, 1fr);
+  grid-template-columns: 18px 88px 88px minmax(0, 1fr);
   align-items: center;
   column-gap: 8px;
 }
@@ -2982,8 +2982,8 @@ body.is-pane-resizing * {
   flex: 0 0 auto;
 }
 .system-settings-width-select {
-  width: 74px;
-  min-width: 74px;
+  width: 88px;
+  min-width: 88px;
   padding: 0 22px 0 8px;
 }
 .system-settings-weekday-select {
@@ -7105,7 +7105,7 @@ body.is-pane-resizing * {
       <button id="helpDialogCloseBtn" class="icon-button" aria-label="閉じる">×</button>
     </div>
     <div class="task-editor-body">
-      <div id="helpVersionValue" class="help-version-value">対象バージョン: Ver.0.7.71</div>
+      <div id="helpVersionValue" class="help-version-value">対象バージョン: Ver.0.7.72</div>
       <section class="help-section">
         <div class="help-section-title">おすすめの使い方</div>
         <div class="help-card-grid">
@@ -7167,7 +7167,7 @@ body.is-pane-resizing * {
       <button id="versionDialogCloseBtn" class="icon-button" aria-label="閉じる">×</button>
     </div>
     <div class="task-editor-body">
-      <div id="versionInfoValue" class="version-info-value">Ver.0.7.71</div>
+      <div id="versionInfoValue" class="version-info-value">Ver.0.7.72</div>
     </div>
   </div>
 
@@ -7468,7 +7468,7 @@ body.is-pane-resizing * {
   // デフォルトステータス
   const DEFAULT_TASK_STATUS = TASK_STATUS.NOT_STARTED;
 
-  const APP_FILE_VERSION = 'v0771';
+  const APP_FILE_VERSION = 'v0772';
   const formatDisplayVersion = (value) => {
     const match = /^v(\d)(\d)(\d{2})$/.exec(String(value || '').trim());
     if (!match) return String(value || '').trim();
@@ -20687,16 +20687,25 @@ ${appendText}` : appendText;
   function scrollSearchTaskIntoView(taskId) {
     const task = getTaskById(taskId);
     if (!task || !ui.timelineScroller) return false;
-    const rowEl = ui.leftBody?.querySelector(`[data-row-id="${task.rowId}"]`);
-    if (rowEl) {
-      const maxScrollTop = Math.max(0, ui.timelineScroller.scrollHeight - ui.timelineScroller.clientHeight);
+
+    // 仮想スクロール対応：DOM の offsetTop に頼らず行インデックス×行高さで算出する
+    const visibleRows = getVisibleRows();
+    const rowIndex = getRowIndexById(task.rowId, visibleRows);
+    if (rowIndex >= 0) {
+      const rowHeight = getCurrentRowHeightPx();
+      const rowTop = rowIndex * rowHeight;
+      const viewportH = ui.timelineScroller.clientHeight || window.innerHeight;
+      const maxScrollTop = Math.max(0, ui.timelineScroller.scrollHeight - viewportH);
       const targetScrollTop = clamp(
-        rowEl.offsetTop - ui.timelineScroller.clientHeight / 2 + rowEl.offsetHeight / 2,
+        rowTop - viewportH / 2 + rowHeight / 2,
         0,
         maxScrollTop
       );
       ui.timelineScroller.scrollTop = targetScrollTop;
       if (ui.leftBody) ui.leftBody.scrollTop = targetScrollTop;
+      // scrollTop 変更後に仮想スクロールの描画範囲を再計算して行を確実に描画する
+      renderRows();
+      renderTimeline();
     }
     scrollTaskIntoTimelineView(taskId, { showWarning: false, align: 'start' });
     syncHeaders();

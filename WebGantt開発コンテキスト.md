@@ -37,7 +37,7 @@
 
 - ファイル: `gantt-collab.html`(30,492行・ファイル名固定化済み)
 - ローカル版を内包 + 協調編集機能(Socket.IO・ロック・プレゼンス・通知)を追加
-- 内部`APP_FILE_VERSION = 'v0771'`
+- 内部`APP_FILE_VERSION = 'v0772'`
 - 追加ファイル: `collab/collab-client.js`(Socket.IOクライアント) + PHP REST API + MySQL DB + Node.js WebSocketサーバー
 
 ### サーバー構成
@@ -141,6 +141,7 @@ document.dispatchEvent(new CustomEvent('gantt:op', { detail: { op: 'state_sync',
 | 2026-08-08 | 同期不具合修正: `promoteMultiTaskHierarchy`/`demoteMultiTaskHierarchy`に`COLLAB-HOOK`を追加 |
 | 2026-08-09 | 引き出し線注記ズレ修正: `_applyRemoteDataOnly`の注記復元でviewStart差分を`anchorCol`にシフト             |
 | 2026-08-09 | 遅延赤枠ズレ修正: ペイン境界ドラッグ時に`updateDelayedRowRightBorders()`の呼び出しを追加                    |
+| 2026-08-30 | v0771→v0772改良反映(ユーザー特別許可): ①検索結果縦スクロールを仮想スクロール対応に修正(`scrollSearchTaskIntoView`をDOM `offsetTop`依存から`rowIndex×rowHeight`計算方式に変更)、②システム表示設定の日・週・月・年プルダウン幅を74px→88pxに拡大(`grid-template-columns`・`.system-settings-width-select`)、③`APP_FILE_VERSION`を`v0772`・UI表示を`Ver.0.7.72`に更新 |
 
 
 ---
