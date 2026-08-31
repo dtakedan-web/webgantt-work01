@@ -644,3 +644,48 @@ SheetJS（`lib/xlsx.full.min.js`）を`eval()`+`global.window = global`でNode.j
 - 設定画面ドロップダウンの表示名（フォーマットA/B表記）: ユーザー確認完了、問題なし
 
 以上により、本18節「複数エクセルフォーマット対応」の実装・確認は全て完了した。関連コミット: `985dfcd`（実装本体）、`1755b14`（表示名変更）。
+
+### 18.11 フォーマットBの週取得範囲をフォーマットAと統一（2026-08-31追記）
+
+**背景**: フォーマットB（dept-schedule）は「1シート＝1週」という構造上、`listWeeks`/`extractTasks`が
+ワークブック内の**全シートを無制限に**週として検出する実装になっていた。一方フォーマットA
+（weekly-table）は1シート内の週ブロック検出処理自体に`MAX_WEEKS = 4`の上限があり、最大4週分までしか
+検出しない。フォーマットBを使用するExcelファイルのシート数が多い（半年分・1年分等）場合、週選択
+チェックボックスの選択肢が膨大になる問題があった。
+
+**ユーザー要望**: フォーマットB選択時も、フォーマットAと同様に1〜4週間で範囲指定した予定を読み込む
+方式に変更したい（デフォルトは1週間分のままでOK）。
+
+**対応内容**: `formats/format-dept-schedule.js`の`analyzeAllSheets()`関数に、フォーマットAと同じ
+`MAX_WEEKS = 4`の絞り込みを追加した。
+
+```javascript
+const MAX_WEEKS = 4;
+
+function analyzeAllSheets(workbook) {
+  const analyzed = workbook.SheetNames
+    .map(function (name) { return analyzeSheet(workbook, name); })
+    .filter(function (a) { return a !== null; });
+  analyzed.sort(function (a, b) { return a.startDate < b.startDate ? -1 : a.startDate > b.startDate ? 1 : 0; });
+  // 開始日昇順の末尾（＝新しい方）から最大MAX_WEEKS件を切り出す
+  if (analyzed.length > MAX_WEEKS) {
+    return analyzed.slice(analyzed.length - MAX_WEEKS);
+  }
+  return analyzed;
+}
+```
+
+- 開始日で昇順ソートした後、末尾（＝日付が新しい方）から`MAX_WEEKS`件のみを切り出す方式のため、
+  シートが5件以上ある場合は**直近4週分のみ**が週選択チェックボックスに表示される
+- 戻り値は昇順（古い→新しい）のまま維持しており、`listWeeks`/`extractTasks`のindexプロパティの
+  対応関係（popup.js側の`selectedWeekIndexes`との整合性）に影響はない
+- ポップアップ側のデフォルト選択状態（表示された週のうち最新1週のみON）は既存の共通ロジック
+  （popup.js `onFetchClick()`内）のままで変更不要。結果として「デフォルト1週間分・最大4週間まで
+  選択可能」という、フォーマットAと同じ挙動になる
+- シート数が4以下のワークブックでは、この変更による見た目・動作の変化はない（従来通り全シートを表示）
+- `node --check`による構文チェック実施済み。切り出しロジックを模した簡易シミュレーションで、
+  6週分の入力から直近4週分が正しい昇順で抽出されることを確認済み
+
+**変更ファイル**: `browser-extension/webgantt-teams-excel-importer/formats/format-dept-schedule.js`のみ。
+`common.js`・`popup.js`・`options.js`・フォーマットA側への変更は不要（フォーマット・プラグイン方式の
+分離設計により、フォーマットB固有の変更がコア側に影響しないことを実証）。

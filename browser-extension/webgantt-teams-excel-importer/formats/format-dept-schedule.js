@@ -32,6 +32,12 @@
  * 空セル・改行分割・日またぎ結合・苗字部分一致マッチングは予定表フォーマットAと共通の
  * ロジック（common.js側）をそのまま使用する（④確定）。
  *
+ * 【2026-08-31追記】週（シート）の取得範囲を予定表フォーマットAと統一。
+ * 従来はワークブック内の全シートを無制限に週として検出していたが、
+ * ユーザー要望により開始日が新しい方から最大4週分までに絞り込むよう変更した
+ * （analyzeAllSheets関数のMAX_WEEKS定数）。ポップアップの週チェックボックスの
+ * デフォルト選択（最新1週のみON）はpopup.js側の共通ロジックのまま変更なし。
+ *
  * 本ファイルは popup.html/options.html から
  * <script src="formats/format-dept-schedule.js"> で読み込まれる。
  * common.js（WGT名前空間）より後に読み込むこと。
@@ -104,12 +110,27 @@
     };
   }
 
-  /** ワークブック内の全シートを解析し、有効な週（シート）を開始日昇順で返す */
+  // 予定表フォーマットAと同様、取得対象は直近4週分までに限定する（2026-08-31変更）。
+  // 従来はワークブック内の全シートを無制限に週として検出していたが、
+  // シート数が多い（半年分・1年分等）ファイルで選択肢が膨大になるため、
+  // 開始日が新しい方から最大4週分のみを対象とするよう変更した。
+  const MAX_WEEKS = 4;
+
+  /**
+   * ワークブック内の全シートを解析し、有効な週（シート）を開始日昇順で返す。
+   * ただし直近（開始日が新しい方から）MAX_WEEKS件までに絞り込む（⑤変更）。
+   */
   function analyzeAllSheets(workbook) {
     const analyzed = workbook.SheetNames
       .map(function (name) { return analyzeSheet(workbook, name); })
       .filter(function (a) { return a !== null; });
     analyzed.sort(function (a, b) { return a.startDate < b.startDate ? -1 : a.startDate > b.startDate ? 1 : 0; });
+    // 開始日昇順の末尾（＝新しい方）から最大MAX_WEEKS件を切り出す。
+    // 戻り値は昇順（古い→新しい）のまま維持し、listWeeks/extractTasksの
+    // indexプロパティの整合性（呼び出し側の並び順前提）を崩さないようにする。
+    if (analyzed.length > MAX_WEEKS) {
+      return analyzed.slice(analyzed.length - MAX_WEEKS);
+    }
     return analyzed;
   }
 
@@ -147,7 +168,11 @@
   // フォーマット登録インターフェース（listWeeks / extractTasks）
   // ─────────────────────────────────────────────────────────
 
-  /** 週一覧のみを検出する軽量版（週チェックボックス表示用。⑤確定: シートが増えても全件表示） */
+  /**
+   * 週一覧のみを検出する軽量版（週チェックボックス表示用）。
+   * 予定表フォーマットAと同様、直近4週分までに絞り込まれた結果を返す
+   * （analyzeAllSheets側で絞り込み済み。2026-08-31変更）。
+   */
   function listWeeks(workbook) {
     const analyzed = analyzeAllSheets(workbook);
     return analyzed.map(function (a) {
