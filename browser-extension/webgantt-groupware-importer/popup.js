@@ -33,6 +33,7 @@ let state = {
   weekCount: 1,         // 取得する週数（1〜4）
   tasks: [],            // [{ kind: 'event'|'meeting', assigneeCode, assigneeName, taskName, startDate, endDate, checked }]
   taskTypeFilter: 'all', // 'all' | 'event' | 'meeting'
+  taskFilter: '',        // ③タスク一覧の名前フィルタ文字列（担当者名・作業名の両方を対象。種別タブとAND条件で絞り込む）
 };
 
 document.addEventListener('DOMContentLoaded', init);
@@ -75,6 +76,17 @@ async function init() {
       state.taskTypeFilter = e.target.getAttribute('data-type');
       renderTaskList();
     });
+  });
+  // キーワード絞り込み（種別タブとAND条件、Teams Excel Importerと同様の仕組み）
+  document.getElementById('taskFilterInput').addEventListener('input', function (e) {
+    state.taskFilter = e.target.value;
+    renderTaskList();
+  });
+  // 名称クイック選択ドロップダウン：選択するとフィルタ入力欄に反映される
+  document.getElementById('taskFilterNameSelect').addEventListener('change', function (e) {
+    state.taskFilter = e.target.value;
+    document.getElementById('taskFilterInput').value = e.target.value;
+    renderTaskList();
   });
 
   const stored = await chromeStorageGet(['wggToken']);
@@ -257,9 +269,12 @@ async function onFetchClick() {
 
     state.tasks = eventTasks.concat(meetingTasks);
     state.taskTypeFilter = 'all';
+    state.taskFilter = '';
+    document.getElementById('taskFilterInput').value = '';
     document.querySelectorAll('.type-tab').forEach(function (el) { el.classList.remove('active'); });
     document.getElementById('tabAll').classList.add('active');
 
+    updateTaskFilterNameOptions();
     renderTaskList();
 
     if (state.tasks.length === 0) {
@@ -279,19 +294,70 @@ async function onFetchClick() {
 // タスクチェックボックスUI（9節）
 // ─────────────────────────────────────────────────────────
 
+/**
+ * 種別タブ（すべて/終日予定/会議）とキーワード絞り込み（担当者名・作業名の部分一致）を
+ * AND条件で適用し、表示対象タスクの(state.tasks配列上の)インデックス一覧を返す。
+ * キーワードが空文字の場合は種別タブのみで絞り込む（従来と同じ挙動）。
+ */
 function getFilteredTaskIndexes() {
+  const keyword = (state.taskFilter || '').trim().toLowerCase();
   const indexes = [];
   state.tasks.forEach(function (t, idx) {
-    if (state.taskTypeFilter === 'all' || t.kind === state.taskTypeFilter) {
-      indexes.push(idx);
+    if (state.taskTypeFilter !== 'all' && t.kind !== state.taskTypeFilter) return;
+    if (keyword !== '') {
+      const taskName = (t.taskName || '').toLowerCase();
+      const assigneeName = (t.assigneeName || '').toLowerCase();
+      if (taskName.indexOf(keyword) === -1 && assigneeName.indexOf(keyword) === -1) return;
     }
+    indexes.push(idx);
   });
   return indexes;
+}
+
+/**
+ * 名称クイック選択ドロップダウンの選択肢を、現在の state.tasks（種別タブに関わらず全件）に
+ * 含まれる担当者名・作業名のユニーク一覧で更新する。フィルタ欄への手入力が面倒な
+ * ユーザー向けに、既知の名称をクリックで選べるようにするための機能
+ * （webgantt-teams-excel-importerと同様の仕組み）。現在選択中の値は可能な範囲で維持する。
+ */
+function updateTaskFilterNameOptions() {
+  const select = document.getElementById('taskFilterNameSelect');
+  if (!select) return;
+  const currentValue = select.value;
+
+  const names = new Set();
+  state.tasks.forEach(function (t) {
+    if (t.assigneeName) names.add(t.assigneeName);
+    if (t.taskName) names.add(t.taskName);
+  });
+  const sortedNames = Array.from(names).sort(function (a, b) {
+    return a.localeCompare(b, 'ja');
+  });
+
+  select.innerHTML = '';
+  const emptyOpt = document.createElement('option');
+  emptyOpt.value = '';
+  emptyOpt.textContent = '(名称を選択)';
+  select.appendChild(emptyOpt);
+  sortedNames.forEach(function (name) {
+    const opt = document.createElement('option');
+    opt.value = name;
+    opt.textContent = name;
+    select.appendChild(opt);
+  });
+
+  // 直前の選択値が新しい一覧にも存在すれば維持する
+  if (sortedNames.indexOf(currentValue) !== -1) {
+    select.value = currentValue;
+  } else {
+    select.value = '';
+  }
 }
 
 function renderTaskList() {
   const section = document.getElementById('taskSection');
   const container = document.getElementById('taskList');
+  const filterRow = document.getElementById('taskFilterRow');
   const countEl = document.getElementById('taskCount');
   container.innerHTML = '';
 
@@ -300,6 +366,7 @@ function renderTaskList() {
     return;
   }
   section.style.display = 'block';
+  if (filterRow) filterRow.style.display = 'flex';
 
   const filteredIndexes = getFilteredTaskIndexes();
 

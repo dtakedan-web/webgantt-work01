@@ -121,6 +121,30 @@
       color: #fff;
       border-color: #3457d5;
     }
+    .task-filter-row {
+      display: flex;
+      gap: 6px;
+      margin-bottom: 6px;
+    }
+    .task-filter-input {
+      flex: 1;
+      min-width: 0;
+      padding: 6px 8px;
+      border: 1px solid #dce2e8;
+      border-radius: 6px;
+      box-sizing: border-box;
+      font-size: 12px;
+    }
+    .task-filter-select {
+      width: 150px;
+      flex-shrink: 0;
+      padding: 6px 4px;
+      border: 1px solid #dce2e8;
+      border-radius: 6px;
+      box-sizing: border-box;
+      font-size: 12px;
+      background: #fff;
+    }
     .task-list {
       max-height: 300px;
       overflow-y: auto;
@@ -238,6 +262,12 @@
         <div class="type-tab active" id="tabAll" data-type="all">すべて</div>
         <div class="type-tab" id="tabEvent" data-type="event">終日予定</div>
         <div class="type-tab" id="tabMeeting" data-type="meeting">会議</div>
+      </div>
+      <div id="taskFilterRow" class="task-filter-row" style="display:none;">
+        <input type="text" id="taskFilterInput" class="task-filter-input" placeholder="担当者名・作業名で絞り込み">
+        <select id="taskFilterNameSelect" class="task-filter-select">
+          <option value="">(名称を選択)</option>
+        </select>
       </div>
       <div id="taskCount" class="task-count"></div>
       <div id="taskList" class="task-list"></div>

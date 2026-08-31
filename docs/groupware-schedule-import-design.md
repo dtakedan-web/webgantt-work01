@@ -540,3 +540,46 @@ Teams Excel連携拡張機能の「ポップアップを開いたら自動的に
 検証用PoC拡張機能（`browser-extension/webgantt-groupware-sso-poc/`）は、正式実装完了・実機動作確認が完了していたため削除可能な状態にあったが、削除実施のタイミングはユーザー判断待ちとしていた。2026-08-24、ユーザーより「もう使う機会もないと考えるため、削除してください」との明示的指示を受け、リポジトリから完全に削除した（15節・項目10）。
 
 以上により、新規タスク②（社内グループウェアスクレイピング連携）は設計・実装・実機動作確認・追加要望対応のすべてが完了し、本番運用中である。
+
+## 18. 追加要望対応: キーワード絞り込み機能（2026-08-31追記）
+
+本番運用中の本拡張機能に対し、ユーザーより以下の追加要望が寄せられた。
+
+> 「絞り込む『すべて』『終日予定』『会議』とは別に(且つという意味で)、含まれる語句・名称で絞込ができるように
+> して欲しいです。『WebGantt Teams Excel Importer』と似た感じでOKです。」
+
+### 18.1 対応内容
+
+`webgantt-teams-excel-importer`拡張機能で既に実装済みの「担当者名・作業名によるキーワード絞り込み」
+（テキスト入力欄＋名称クイック選択ドロップダウン）と同一のUI・仕組みを本拡張機能にも追加した。
+
+- 種別タブ（すべて/終日予定/会議）の下に、テキスト入力欄（`taskFilterInput`）＋
+  名称クイック選択ドロップダウン（`taskFilterNameSelect`）を新規追加
+- 絞り込み条件は「種別タブ一致」**AND**「キーワードが担当者名または作業名に部分一致」
+  （ユーザー要望通りの「且つ」条件）。キーワードが空の場合は種別タブのみで絞り込む従来の挙動を維持
+- ドロップダウンの選択肢は、取得済みタスク一覧（現在の種別タブに関わらず全件）に含まれる
+  担当者名・作業名のユニーク一覧（あいうえお順）。選択するとテキスト入力欄に反映される
+- 「全選択」「全解除」（既存の`setAllChecks`）は変更不要。`getFilteredTaskIndexes()`が返す
+  絞り込み結果（種別＋キーワードのAND条件）に対して動作する既存の仕組みをそのまま利用
+- スケジュール再取得（「取得」ボタン・ポップアップ自動取得）のたびに、キーワード入力欄・
+  ドロップダウン選択状態はリセットされる（新しい取得結果に対して絞り込み直せるようにするため）
+
+### 18.2 変更ファイル
+
+- `browser-extension/webgantt-groupware-importer/popup.html`: CSS（`.task-filter-row`・
+  `.task-filter-input`・`.task-filter-select`、Teams Excel Importer側と同一定義）と、
+  種別タブ直下のフィルタ行マークアップを追加
+- `browser-extension/webgantt-groupware-importer/popup.js`: `state.taskFilter`の追加、
+  フィルタ入力欄・ドロップダウンのイベントリスナー追加、`getFilteredTaskIndexes()`をAND条件に
+  変更、`updateTaskFilterNameOptions()`関数を新規追加、`onFetchClick()`でのフィルタ状態リセット、
+  `renderTaskList()`でのフィルタ行表示制御
+
+`common.js`・`options.js`・サーバー側API・DB・`gantt-collab.html`への変更は一切なし。
+
+### 18.3 検証
+
+- `node --check`による`popup.js`の構文チェック実施済み・エラーなし
+- Python `html.parser`による`popup.html`のHTML妥当性簡易チェック実施済み・エラーなし
+- ロジックはTeams Excel Importer側で実機確認済みの実装をそのまま移植したもの（フィルタ用の
+  フィールド名が`assignee`ではなく`assigneeName`である点のみ、本拡張機能のタスクオブジェクト
+  構造に合わせて調整）
