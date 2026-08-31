@@ -23849,6 +23849,8 @@ ${appendText}` : appendText;
       updateSystemSettingsUI();
       markProjectAsSaved();
       showToast('プロジェクトを読み込みました。');
+      // [COLLAB-HOOK] 外部プロジェクト読込（読込直後にサーバーへ保存。読込直後だけ保存されない不具合対応）
+      document.dispatchEvent(new CustomEvent('gantt:op', { detail: { op: 'state_sync', subtype: 'open_project', snapshot: JSON.parse(buildSerializableProject()) }}));
     } catch (error) {
       showToast('JSONの読込に失敗しました。');
     }

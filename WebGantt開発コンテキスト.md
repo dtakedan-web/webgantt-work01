@@ -142,6 +142,7 @@ document.dispatchEvent(new CustomEvent('gantt:op', { detail: { op: 'state_sync',
 | 2026-08-09 | 引き出し線注記ズレ修正: `_applyRemoteDataOnly`の注記復元でviewStart差分を`anchorCol`にシフト             |
 | 2026-08-09 | 遅延赤枠ズレ修正: ペイン境界ドラッグ時に`updateDelayedRowRightBorders()`の呼び出しを追加                    |
 | 2026-08-30 | v0771→v0772改良反映(ユーザー特別許可): ①検索結果縦スクロールを仮想スクロール対応に修正(`scrollSearchTaskIntoView`をDOM `offsetTop`依存から`rowIndex×rowHeight`計算方式に変更)、②システム表示設定の日・週・月・年プルダウン幅を74px→88pxに拡大(`grid-template-columns`・`.system-settings-width-select`)、③`APP_FILE_VERSION`を`v0772`・UI表示を`Ver.0.7.72`に更新 |
+| 2026-08-31 | 「開く」ボタンで外部プロジェクトを読み込んだ直後にタスク・設定が保存されない不具合を修正: `loadProjectJson()`に`COLLAB-HOOK`(`gantt:op`/`state_sync`/`subtype: 'open_project'`)の発火を追加。読込直後にサーバーへスナップショットが送信されるようになった |
 
 
 ---
